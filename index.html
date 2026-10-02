@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<title>Deadlock Counter-Buy</title>
+<style>
+  :root{
+    --bg:#0b0d0e; --panel:#131719; --panel2:#171c1f; --line:#2a3135; --text:#f0f2ef;
+    --muted:#9aa5a9; --soft:#c8d0d2; --accent:#d7c46a; --accent2:#6fb3a6; --danger:#d78270;
+    --weapon:#d4a258; --vitality:#70a877; --spirit:#9c7fc7; --shadow:0 14px 40px rgba(0,0,0,.24);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  body{min-height:100%;padding:18px}
+  button,input,select{font:inherit}
+  button{color:inherit}
+  .app{max-width:1120px;margin:0 auto}
+  .top{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;margin-bottom:16px}
+  .brand h1{font-size:clamp(22px,4vw,34px);line-height:1;margin:0 0 7px;letter-spacing:-.03em}
+  .brand p{margin:0;color:var(--muted);font-size:14px;max-width:640px}
+  .status{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+  .pill{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 10px;font-size:12px;color:var(--muted);white-space:nowrap}
+  .pill.live{color:#c9e9d7;border-color:#365545}
+  .pill.warn{color:#f1d7aa;border-color:#665338}
+
+  .layout{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow)}
+  .setup{padding:14px;position:sticky;top:12px}
+  .section-label{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);font-weight:800;margin:0 0 8px}
+  .slots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .slot{appearance:none;border:1px solid var(--line);background:var(--panel2);border-radius:12px;min-height:82px;padding:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;text-align:center;transition:.15s ease;overflow:hidden}
+  .slot:hover{border-color:#475157}.slot.active{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+  .slot.you{grid-column:1/-1;min-height:94px;flex-direction:row;justify-content:flex-start;text-align:left;padding:10px 12px}
+  .slot.you .avatar{width:60px;height:60px}.slot.you .slot-copy{align-items:flex-start}.slot.you .hero-name{font-size:17px}
+  .avatar{width:44px;height:44px;border-radius:10px;background:#22292d;border:1px solid #30383d;object-fit:cover;display:grid;place-items:center;font-size:12px;font-weight:800;color:#c9d0d2;overflow:hidden;flex:0 0 auto}
+  .avatar img{width:100%;height:100%;object-fit:cover;display:block}
+  .slot-copy{display:flex;flex-direction:column;gap:2px;min-width:0;align-items:center}
+  .slot-title{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:800}
+  .hero-name{font-size:12px;font-weight:760;line-height:1.12;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .empty{color:#778187;font-weight:650}
+
+  .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .seg-wrap label,.select-wrap label{display:block;font-size:11px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+  .seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .seg button{border:0;border-right:1px solid var(--line);background:var(--panel2);padding:9px 5px;font-size:12px;cursor:pointer}
+  .seg button:last-child{border-right:0}.seg button.on{background:#353425;color:#f6e8a7}
+  select{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .go{width:100%;margin-top:12px;border:0;border-radius:12px;padding:14px 15px;background:var(--accent);color:#171612;font-weight:900;letter-spacing:.02em;cursor:pointer}
+  .go:disabled{opacity:.45;cursor:not-allowed}
+  .clear{width:100%;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:10px;background:transparent;color:var(--muted);cursor:pointer}
+  .hint{font-size:12px;color:var(--muted);line-height:1.45;margin:10px 2px 0}
+
+  .picker{margin-bottom:16px;overflow:hidden}
+  .picker-head{display:flex;gap:10px;align-items:center;padding:12px 12px 10px;border-bottom:1px solid var(--line)}
+  .picker-head strong{font-size:14px;white-space:nowrap}
+  .picker-head input{min-width:0;flex:1;background:#0f1315;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 11px;font-size:16px}
+  .hero-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;padding:10px;max-height:410px;overflow:auto}
+  .hero-btn{appearance:none;border:1px solid transparent;background:transparent;border-radius:10px;padding:6px 4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0}
+  .hero-btn:hover{background:var(--panel2);border-color:var(--line)}
+  .hero-btn.selected{opacity:.35}.hero-btn .avatar{width:52px;height:52px}.hero-btn span:last-child{font-size:11px;line-height:1.1;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+
+  .results{padding:14px}
+  .result-top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}
+  .result-top h2{font-size:19px;margin:1px 0 0;letter-spacing:-.02em}.result-top .sub{font-size:12px;color:var(--muted)}
+  .confidence{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;border:1px solid var(--line);border-radius:999px;padding:6px 8px;color:var(--soft)}
+  .calls{display:grid;gap:8px}
+  .call{display:grid;grid-template-columns:116px minmax(0,1fr);gap:12px;align-items:start;border:1px solid var(--line);border-radius:12px;padding:11px 12px;background:var(--panel2)}
+  .call .k{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:900;color:var(--muted);padding-top:3px}
+  .call .v{min-width:0}.item-line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .item-name{font-weight:850}.price{font-size:12px;color:#e6d990}.why{font-size:13px;color:var(--muted);margin-top:2px;line-height:1.35}
+  .item-icon{width:26px;height:26px;border-radius:6px;border:1px solid #384146;background:#22292d;object-fit:cover}
+  .path{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:12px;background:#101416}
+  .path strong{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+  .path-text{font-weight:850;line-height:1.5}
+  .data-note{margin-top:10px;display:flex;gap:8px;align-items:flex-start;color:var(--muted);font-size:11px;line-height:1.4}
+  .dot{width:7px;height:7px;border-radius:50%;background:#687277;margin-top:4px;flex:0 0 auto}.dot.live{background:#6fb98b}
+  .detail-toggle{margin-top:10px;border:0;background:transparent;color:#b6c1c5;text-decoration:underline;text-underline-offset:3px;padding:4px 0;cursor:pointer;font-size:12px}
+  .detail{display:none;margin-top:8px;border-top:1px solid var(--line);padding-top:10px;color:var(--muted);font-size:12px;line-height:1.5}.detail.show{display:block}
+  .detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mini{background:#101416;border:1px solid var(--line);border-radius:10px;padding:8px}.mini b{display:block;color:var(--soft);margin-bottom:3px}
+
+  .empty-state{padding:28px 16px;text-align:center;color:var(--muted)}
+  .empty-state b{display:block;color:var(--text);font-size:16px;margin-bottom:5px}
+  .foot{color:#778187;font-size:11px;line-height:1.5;margin-top:14px;padding:0 2px}
+  .foot a{color:#9eb7c0}
+
+  @media (max-width:820px){
+    body{padding:10px}.layout{grid-template-columns:1fr}.setup{position:static}.hero-grid{grid-template-columns:repeat(5,minmax(0,1fr));max-height:360px}.top{flex-direction:column}.status{justify-content:flex-start}.slot.you{min-height:84px}.call{grid-template-columns:92px minmax(0,1fr)}
+  }
+  @media (max-width:480px){
+    .hero-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.controls{grid-template-columns:1fr}.call{grid-template-columns:1fr;gap:4px}.call .k{padding:0}.detail-grid{grid-template-columns:1fr}.slot{min-height:76px;padding:6px}.avatar{width:40px;height:40px}
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="top">
+    <div class="brand">
+      <h1>Deadlock Counter-Buy</h1>
+      <p>Pick your hero, lane duo and the other four enemies. Get one fast item call, the pivot, the next defense and the late-game answer.</p>
+    </div>
+    <div class="status">
+      <span class="pill" id="patchPill">Patch data: loading…</span>
+      <span class="pill" id="rankPill">High-rank signal: Oracle–Eternus</span>
+    </div>
+  </div>
+
+  <div class="layout">
+    <aside class="card setup">
+      <div class="section-label">1 · Build the matchup</div>
+      <div class="slots" id="slots"></div>
+
+      <div class="controls">
+        <div class="seg-wrap">
+          <label>Lane state</label>
+          <div class="seg" id="laneStateSeg">
+            <button type="button" data-val="behind">Behind</button>
+            <button type="button" class="on" data-val="even">Even</button>
+            <button type="button" data-val="ahead">Ahead</button>
+          </div>
+        </div>
+        <div class="select-wrap">
+          <label for="stageSelect">Game stage</label>
+          <select id="stageSelect">
+            <option value="lane">Lane</option>
+            <option value="mid">Mid</option>
+            <option value="late">Late</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="go" id="goBtn" type="button">GO — GIVE ME THE BUY</button>
+      <button class="clear" id="clearBtn" type="button">Clear enemies</button>
+      <div class="hint">Fast mode: after you choose a hero, the active slot automatically jumps to the next empty one.</div>
+    </aside>
+
+    <main>
+      <section class="card picker">
+        <div class="picker-head">
+          <strong id="pickerLabel">Choose your hero</strong>
+          <input id="search" type="search" placeholder="Search heroes…" autocomplete="off" />
+        </div>
+        <div class="hero-grid" id="heroGrid"></div>
+      </section>
+
+      <section class="card results" id="results">
+        <div class="empty-state" id="emptyState">
+          <b>Ready when the roster is.</b>
+          Fill all seven slots, then hit GO.
+        </div>
+        <div id="resultBody" hidden>
+          <div class="result-top">
+            <div>
+              <div class="section-label" style="margin-bottom:4px">Counter-buy call</div>
+              <h2 id="matchupTitle"></h2>
+              <div class="sub" id="matchupSub"></div>
+            </div>
+            <span class="confidence" id="confidence"></span>
+          </div>
+
+          <div class="calls">
+            <div class="call"><div class="k">Buy now</div><div class="v" id="buyNow"></div></div>
+            <div class="call"><div class="k">If ahead</div><div class="v" id="ifAhead"></div></div>
+            <div class="call"><div class="k">Next defense</div><div class="v" id="nextDefense"></div></div>
+            <div class="call"><div class="k">Later</div><div class="v" id="later"></div></div>
+          </div>
+
+          <div class="path"><strong>Simple path</strong><div class="path-text" id="pathText"></div></div>
+          <div class="data-note"><span class="dot" id="dataDot"></span><span id="dataNote"></span></div>
+          <button class="detail-toggle" id="detailToggle" type="button">Why these picks?</button>
+          <div class="detail" id="detail"></div>
+        </div>
+      </section>
+
+      <div class="foot">Uses live Deadlock game data and high-rank item purchase data when the public Deadlock API is reachable. Counter logic is intentionally conservative: a counter item must solve a specific threat, fit your hero, and be worth delaying core progression. This is an independent fan tool and is not affiliated with Valve.</div>
+    </main>
+  </div>
+</div>
+<script>
+(() => {
+  'use strict';
+  const API = 'https://api.deadlock-api.com';
+  const FALLBACK_HEROES = ['Abrams','Apollo','Bebop','Billy','Calico','Celeste','The Doorman','Drifter','Dynamo','Graves','Grey Talon','Haze','Holliday','Infernus','Ivy','Kelvin','Lady Geist','Lash','McGinnis','Mina','Mirage','Mo & Krill','Paige','Paradox','Pocket','Rem','Seven','Shiv','Silver','Sinclair','Venator','Victor','Vindicta','Viscous','Vyper','Warden','Wraith','Yamato'];
+
+  // Threat values are 0–3. They are deliberately broad: the engine uses exact special-case interactions
+  // only when we have a reliable reason to do so, then lets live high-rank item data break close ties.
+  const P = (hard,slow,heal,gun,spirit,burst,mob,dive,air,poke,displace,silence,channel) => ({hard,slow,heal,gun,spirit,burst,mob,dive,air,poke,displace,silence,channel});
+  const THREAT = {
+    'Abrams':P(3,1,3,2,1,2,2,3,0,1,2,0,0), 'Apollo':P(2,1,0,2,2,2,3,3,0,1,1,0,0),
+    'Bebop':P(3,1,0,2,3,3,1,2,0,2,3,0,1), 'Billy':P(3,2,1,2,2,2,3,3,0,1,2,0,0),
+    'Calico':P(1,1,1,1,3,3,3,3,0,2,0,0,0), 'Celeste':P(2,2,0,1,3,3,2,1,0,3,0,0,1),
+    'The Doorman':P(2,1,1,1,2,2,3,2,0,2,3,0,0), 'Drifter':P(2,2,1,2,2,3,3,3,0,2,1,2,0),
+    'Dynamo':P(3,2,2,1,3,2,1,1,0,2,2,0,3), 'Graves':P(2,3,2,1,3,2,1,1,0,3,1,0,0),
+    'Grey Talon':P(1,2,0,3,2,3,2,1,3,3,0,0,1), 'Haze':P(2,1,1,3,1,3,3,3,0,2,0,1,3),
+    'Holliday':P(2,2,0,3,1,3,2,2,0,3,1,0,0), 'Infernus':P(1,2,3,3,2,2,2,2,0,3,0,0,0),
+    'Ivy':P(2,2,2,2,2,2,2,1,2,2,1,0,1), 'Kelvin':P(2,3,3,1,3,2,2,2,1,3,1,0,0),
+    'Lady Geist':P(1,2,3,2,3,3,1,1,0,3,0,0,0), 'Lash':P(3,2,1,1,3,3,3,3,3,2,3,0,1),
+    'McGinnis':P(1,2,3,3,2,2,1,1,0,3,1,0,1), 'Mina':P(2,2,1,1,3,3,3,3,1,2,1,1,0),
+    'Mirage':P(2,2,1,3,2,2,2,2,0,2,0,0,0), 'Mo & Krill':P(3,2,3,1,3,2,2,3,0,1,2,0,2),
+    'Paige':P(2,2,2,1,3,2,1,1,0,3,1,0,0), 'Paradox':P(3,2,0,3,2,3,2,1,0,3,3,0,0),
+    'Pocket':P(1,2,2,1,3,3,3,3,0,3,0,0,0), 'Rem':P(1,2,3,1,3,2,1,1,0,3,0,0,0),
+    'Seven':P(2,3,0,2,3,3,1,1,0,3,1,0,3), 'Shiv':P(1,2,3,3,2,3,3,3,0,2,1,0,0),
+    'Silver':P(1,2,1,3,1,3,3,3,0,2,0,0,0), 'Sinclair':P(3,2,0,1,3,3,2,1,0,3,1,1,0),
+    'Venator':P(1,1,0,3,1,3,2,2,0,3,0,0,0), 'Victor':P(1,1,1,3,1,3,2,2,0,2,0,0,0),
+    'Vindicta':P(1,2,0,3,2,3,2,1,3,3,0,0,1), 'Viscous':P(3,3,2,1,3,2,2,2,0,2,3,0,1),
+    'Vyper':P(1,2,0,3,1,3,3,3,0,2,0,0,0), 'Warden':P(3,2,1,2,2,2,1,2,0,2,1,0,0),
+    'Wraith':P(2,1,0,3,1,3,3,3,0,2,0,1,0), 'Yamato':P(1,2,2,2,2,3,3,3,0,2,1,0,0)
+  };
+
+  const FIT = {
+    'Abrams':{spirit:2,gun:2,channel:0},'Apollo':{spirit:2,gun:2,channel:0},'Bebop':{spirit:3,gun:1,channel:0},'Billy':{spirit:2,gun:2,channel:0},
+    'Calico':{spirit:3,gun:1,channel:0},'Celeste':{spirit:3,gun:1,channel:0},'The Doorman':{spirit:2,gun:1,channel:0},'Drifter':{spirit:2,gun:2,channel:0},
+    'Dynamo':{spirit:3,gun:1,channel:3},'Graves':{spirit:3,gun:1,channel:0},'Grey Talon':{spirit:2,gun:3,channel:0},'Haze':{spirit:1,gun:3,channel:3},
+    'Holliday':{spirit:1,gun:3,channel:0},'Infernus':{spirit:2,gun:3,channel:0},'Ivy':{spirit:2,gun:2,channel:1},'Kelvin':{spirit:3,gun:1,channel:0},
+    'Lady Geist':{spirit:3,gun:1,channel:0},'Lash':{spirit:3,gun:1,channel:0},'McGinnis':{spirit:2,gun:3,channel:1},'Mina':{spirit:3,gun:1,channel:0},
+    'Mirage':{spirit:2,gun:3,channel:0},'Mo & Krill':{spirit:3,gun:1,channel:2},'Paige':{spirit:3,gun:1,channel:0},'Paradox':{spirit:2,gun:3,channel:0},
+    'Pocket':{spirit:3,gun:1,channel:0},'Rem':{spirit:3,gun:1,channel:0},'Seven':{spirit:3,gun:2,channel:3},'Shiv':{spirit:2,gun:3,channel:0},
+    'Silver':{spirit:1,gun:3,channel:0},'Sinclair':{spirit:3,gun:1,channel:0},'Venator':{spirit:1,gun:3,channel:0},'Victor':{spirit:1,gun:3,channel:0},
+    'Vindicta':{spirit:1,gun:3,channel:1},'Viscous':{spirit:3,gun:1,channel:1},'Vyper':{spirit:1,gun:3,channel:0},'Warden':{spirit:2,gun:2,channel:0},
+    'Wraith':{spirit:1,gun:3,channel:0},'Yamato':{spirit:2,gun:2,channel:0}
+  };
+
+  const ITEMS = {
+    'Extra Stamina':{cost:800,tier:1,type:'vitality'}, 'Extra Regen':{cost:800,tier:1,type:'vitality'},
+    'Debuff Reducer':{cost:1600,tier:2,type:'vitality'}, 'Reactive Barrier':{cost:1600,tier:2,type:'vitality'},
+    'Enduring Speed':{cost:1600,tier:2,type:'vitality'}, 'Slowing Hex':{cost:1600,tier:2,type:'spirit'},
+    'Healbane':{cost:1600,tier:2,type:'vitality'}, 'Cold Front':{cost:1600,tier:2,type:'spirit'},
+    'Bullet Resilience':{cost:3200,tier:3,type:'vitality'}, 'Spirit Resilience':{cost:3200,tier:3,type:'vitality'},
+    'Disarming Hex':{cost:3200,tier:3,type:'spirit'}, 'Dispel Magic':{cost:3200,tier:3,type:'vitality'},
+    'Counterspell':{cost:3200,tier:3,type:'vitality'}, 'Knockdown':{cost:3200,tier:3,type:'spirit'},
+    'Decay':{cost:3200,tier:3,type:'spirit'}, 'Unstoppable':{cost:6400,tier:4,type:'vitality'},
+    'Cheat Death':{cost:6400,tier:4,type:'vitality'}
+  };
+
+  // Verified/high-confidence exact mobility interactions we can safely use as a bonus.
+  const HEX_PRIORITY = new Set(['Kelvin','Drifter','Billy']);
+  const BIG_PARRY = new Set(['Bebop','Grey Talon','Haze','Lash','Paradox','Seven','Vindicta','Wraith','Dynamo']);
+  const DISPEL_VALUE = new Set(['Kelvin','Drifter','Graves','Infernus','Lady Geist','Pocket','Seven','Warden','Wraith','Sinclair']);
+  const AIR_VALUE = new Set(['Grey Talon','Vindicta','Lash','Ivy']);
+
+  const state = {you:'', enemies:['','','','','',''], active:'you', laneState:'even', stage:'lane'};
+  const meta = {heroes:[], heroByName:new Map(), items:new Map(), itemById:new Map(), online:false, steam:null};
+  const $ = s => document.querySelector(s);
+
+  function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
+  function initials(name){return String(name).replace(/^The\s+/,'').split(/[\s&]+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase();}
+  function avatarHTML(name, cls=''){
+    const h=meta.heroByName.get(name); const url=h?.images?.icon_hero_card_webp || h?.images?.icon_hero_card || h?.images?.icon_image_small_webp || h?.images?.icon_image_small || '';
+    return `<span class="avatar ${cls}">${url?`<img src="${esc(url)}" alt="${esc(name)}" loading="lazy" onerror="this.remove();this.parentNode.textContent='${esc(initials(name))}'">`:esc(initials(name||'?'))}</span>`;
+  }
+  function slotLabel(key){ if(key==='you') return 'You'; const i=Number(key.slice(1)); return i<2?`Lane ${i+1}`:`Enemy ${i+1}`; }
+  function getSlotValue(key){ if(key==='you') return state.you; return state.enemies[Number(key.slice(1))]||''; }
+  function setSlotValue(key,val){ if(key==='you') state.you=val; else state.enemies[Number(key.slice(1))]=val; }
+  function slotKeys(){return ['you','e0','e1','e2','e3','e4','e5'];}
+  function nextEmpty(after){ const keys=slotKeys(); const start=Math.max(0,keys.indexOf(after)); for(let x=1;x<=keys.length;x++){const k=keys[(start+x)%keys.length]; if(!getSlotValue(k)) return k;} return after; }
+
+  function renderSlots(){
+    const root=$('#slots'); root.innerHTML='';
+    for(const key of slotKeys()){
+      const name=getSlotValue(key); const b=document.createElement('button'); b.type='button';
+      b.className='slot'+(key==='you'?' you':'')+(state.active===key?' active':''); b.dataset.key=key;
+      b.innerHTML = `${name?avatarHTML(name):`<span class="avatar">+</span>`}<span class="slot-copy"><span class="slot-title">${esc(slotLabel(key))}</span><span class="hero-name ${name?'':'empty'}">${esc(name||'Choose')}</span></span>`;
+      b.addEventListener('click',()=>{state.active=key; renderSlots(); renderPickerLabel();}); root.appendChild(b);
+    }
+    $('#goBtn').disabled = !(state.you && state.enemies.every(Boolean) && new Set(state.enemies).size===6 && !state.enemies.includes(state.you));
+    renderPicker();
+  }
+
+  function renderPickerLabel(){ $('#pickerLabel').textContent = `Choose ${slotLabel(state.active).toLowerCase()}`; }
+  function currentHeroList(){ return meta.heroes.length ? meta.heroes.map(h=>h.name).filter(Boolean).sort((a,b)=>a.localeCompare(b)) : FALLBACK_HEROES.slice(); }
+  function renderPicker(){
+    const q=$('#search').value.trim().toLowerCase(); const grid=$('#heroGrid'); grid.innerHTML='';
+    const selected=new Set([state.you,...state.enemies].filter(Boolean));
+    for(const name of currentHeroList().filter(n=>n.toLowerCase().includes(q))){
+      const b=document.createElement('button'); b.type='button'; b.className='hero-btn'+(selected.has(name)?' selected':'');
+      b.innerHTML=`${avatarHTML(name)}<span>${esc(name)}</span>`;
+      b.addEventListener('click',()=>{
+        if(selected.has(name) && getSlotValue(state.active)!==name) return;
+        const old=getSlotValue(state.active); setSlotValue(state.active,name);
+        if(old && old!==name){ /* direct replacement is allowed */ }
+        state.active=nextEmpty(state.active); savePrefs(); renderSlots(); renderPickerLabel();
+      });
+      grid.appendChild(b);
+    }
+  }
+
+  function savePrefs(){ try{ localStorage.setItem('dlcb.you',state.you||''); localStorage.setItem('dlcb.stage',state.stage); localStorage.setItem('dlcb.laneState',state.laneState);}catch(_){}}
+  function loadPrefs(){ try{state.you=localStorage.getItem('dlcb.you')||''; state.stage=localStorage.getItem('dlcb.stage')||'lane'; state.laneState=localStorage.getItem('dlcb.laneState')||'even';}catch(_){} }
+
+  function sumThreat(names){
+    const t=P(0,0,0,0,0,0,0,0,0,0,0,0,0);
+    for(const n of names){const p=profileFor(n); for(const k of Object.keys(t)) t[k]+=p[k]||0;} return t;
+  }
+  function profileFor(name){
+    if(THREAT[name]) return THREAT[name];
+    const h=meta.heroByName.get(name); const tags=(h?.tags||[]).map(x=>String(x).toLowerCase()); const role=String(h?.description?.role||'').toLowerCase(); const type=String(h?.hero_type||'').toLowerCase();
+    const has=s=>tags.some(t=>t.includes(s))||role.includes(s)||type.includes(s);
+    return P(has('controller')?2:1,has('controller')?2:1,has('support')?2:0,has('carry')||has('marksman')?3:1,has('mage')||has('mystic')?3:1,has('assassin')?3:2,has('skirmisher')||has('assassin')?3:1,has('assassin')||has('brawler')?2:1,0,has('marksman')||has('mage')?2:1,has('controller')?1:0,0,0);
+  }
+  function fitFor(name){ return FIT[name] || {spirit:2,gun:2,channel:0}; }
+
+  function stageWeights(){return state.stage==='lane'?{lane:.68,team:.32,maxTier:2}:state.stage==='mid'?{lane:.32,team:.68,maxTier:3}:{lane:.18,team:.82,maxTier:4};}
+  function scoreItem(name,lane,team){
+    const fit=fitFor(state.you), w=stageWeights(); const Tm=k=>(lane[k]||0)*w.lane+(team[k]||0)*w.team; let s=0,why=[];
+    switch(name){
+      case 'Extra Stamina': s=Tm('hard')*.35+Tm('slow')*.28+Tm('dive')*.38; if(state.stage!=='lane') s-=2; why=['cheap room to dodge and disengage']; break;
+      case 'Extra Regen': s=Tm('poke')*.65; if(state.stage!=='lane') s-=2; why=['cheap sustain into repeated poke']; break;
+      case 'Debuff Reducer': s=Tm('hard')*.8+Tm('slow')*.78+Tm('silence')*1.0; why=['shortens the control/debuff window']; break;
+      case 'Reactive Barrier': s=Tm('hard')*1.02+Tm('silence')*.85+Tm('burst')*.28; why=['absorbs burst that follows real hard CC']; break;
+      case 'Enduring Speed': s=Tm('slow')*1.12; why=['best cheap answer when slows are the main problem']; break;
+      case 'Slowing Hex': s=Tm('mob')*.83+Tm('dive')*.22; s+=state.enemies.filter(x=>HEX_PRIORITY.has(x)).length*.95; if(state.laneState==='ahead')s+=1.2; if(state.laneState==='behind')s-=.7; why=['punishes key movement and turns catches into kills']; break;
+      case 'Healbane': s=Tm('heal')*(.63+.17*fit.spirit); if(fit.spirit<2)s-=1; why=['efficient anti-heal if your kit applies Spirit damage often']; break;
+      case 'Cold Front': s=Tm('dive')*.5+Tm('mob')*.38; if(state.laneState==='ahead')s+=.4; why=['cheap peel/catch against close-range mobility']; break;
+      case 'Bullet Resilience': s=Tm('gun')*1.15+Tm('burst')*.18; why=['broad defense when weapon damage is actually carrying']; break;
+      case 'Spirit Resilience': s=Tm('spirit')*1.12+Tm('burst')*.17; why=['broad defense into sustained Spirit damage']; break;
+      case 'Disarming Hex': s=Tm('gun')*.83+Tm('dive')*.28; if(state.stage==='lane')s-=1.2; why=['turns off a dangerous weapon carry during their commit']; break;
+      case 'Dispel Magic': s=Tm('slow')*.55+Tm('silence')*.9; s+=state.enemies.filter(x=>DISPEL_VALUE.has(x)).length*.23; why=['cleanses the debuff that is preventing you from functioning']; break;
+      case 'Counterspell': s=Tm('burst')*.45+state.enemies.filter(x=>BIG_PARRY.has(x)).length*.38; if(state.stage==='lane')s-=1; why=['parry one high-impact ability rather than tanking it']; break;
+      case 'Knockdown': s=Tm('air')*.9+Tm('channel')*.72+Tm('mob')*.28; s+=state.enemies.filter(x=>AIR_VALUE.has(x)).length*.3; if(state.stage==='lane')s-=1.2; why=['reliable catch/interrupt against air mobility or channels']; break;
+      case 'Decay': s=Tm('heal')*.83+(fit.spirit<2?.65:0); if(state.stage==='lane')s-=1.4; why=['hard anti-heal when a 1,600 option is not enough or does not fit']; break;
+      case 'Unstoppable': s=Tm('hard')*.43+Tm('silence')*.58+Tm('displace')*.72+fit.channel*.95; if(state.stage==='lane')s-=3.2; else if(state.stage==='mid')s-=.7; why=[fit.channel>=2?'protects the ability/channel your hero must complete':'protects your commit from the enemy CC chain']; break;
+      case 'Cheat Death': s=Tm('burst')*.55+Tm('dive')*.38; if(state.stage!=='late')s-=2.4; why=['late emergency answer when you are being erased before you can play']; break;
+    }
+    if(ITEMS[name].tier>w.maxTier) s-=3.5*(ITEMS[name].tier-w.maxTier);
+    if(state.laneState==='behind' && ITEMS[name].cost<=1600 && state.stage==='lane') s+=.55;
+    if(state.laneState==='ahead' && ['Reactive Barrier','Extra Regen'].includes(name)) s-=.35;
+    return {name,score:s,why:why[0]};
+  }
+
+  function curatedRecommendation(){
+    const laneNames=state.enemies.slice(0,2), all=state.enemies.slice(); const lane=sumThreat(laneNames), team=sumThreat(all), fit=fitFor(state.you);
+    let scored=Object.keys(ITEMS).map(n=>scoreItem(n,lane,team)).sort((a,b)=>b.score-a.score);
+    const stage=stageWeights();
+    const immediate=scored.filter(x=>ITEMS[x.name].tier<=stage.maxTier);
+    let buy=immediate[0];
+    // If the lane does not demand a real detour, say so instead of inventing one.
+    const lanePressure=(lane.hard+lane.slow+lane.heal+lane.poke+lane.dive+lane.burst)/6;
+    if(state.stage==='lane' && buy.score<4.15 && lanePressure<3.25) buy={name:'Stay on core',score:buy.score,why:'no counter is valuable enough to delay your next core spike'};
+
+    let ahead = scored.find(x=>x.name==='Slowing Hex' && x.score>3.4) || scored.find(x=>x.name==='Healbane' && x.score>4.1) || {name:'Stay on core',score:0,why:'keep your advantage instead of over-countering'};
+    if(buy.name===ahead.name) ahead = {name:'Stay on core',score:0,why:'you already bought the useful matchup tool'};
+
+    const defensiveNames=['Spirit Resilience','Bullet Resilience','Dispel Magic','Counterspell','Disarming Hex','Debuff Reducer','Reactive Barrier'];
+    let defense=scored.filter(x=>defensiveNames.includes(x.name) && x.name!==buy.name).sort((a,b)=>b.score-a.score)[0];
+    if(defense && defense.score<4.6) defense={name:'Only if needed',score:defense.score,why:'do not buy a defense item unless that damage/control is actually hurting you'};
+
+    let later=scored.filter(x=>ITEMS[x.name].tier>=3 && x.name!==defense?.name && x.name!==buy.name).sort((a,b)=>b.score-a.score)[0];
+    if(fit.channel>=2 && (team.hard+team.silence+team.displace)>=10) later={name:'Unstoppable',score:10,why:'protects the key channel/engage your hero is picked to land'};
+    if(later && later.score<4.9) later={name:'Return to core scaling',score:later.score,why:'the roster does not justify another expensive counter slot'};
+
+    const confidence = (buy.score>=7.2?'High':buy.score>=5.0?'Good':'Situational');
+    return {buy,ahead,defense,later,scored,lane,team,confidence,liveSignal:null};
+  }
+
+  function itemMeta(name){
+    const live=meta.items.get(name); return {name,cost:live?.cost ?? ITEMS[name]?.cost ?? null,image:live?.image_webp||live?.image||'',type:live?.item_slot_type||ITEMS[name]?.type||''};
+  }
+  function callHTML(call){
+    if(!call) return '';
+    const m=itemMeta(call.name); const isItem=!!(ITEMS[call.name]||meta.items.get(call.name));
+    return `<div class="item-line">${isItem&&m.image?`<img class="item-icon" src="${esc(m.image)}" alt="">`:''}<span class="item-name">${esc(call.name)}</span>${isItem&&m.cost?`<span class="price">${Number(m.cost).toLocaleString()} souls</span>`:''}</div><div class="why">${esc(call.why)}</div>`;
+  }
+
+  function coreNameForStage(){
+    const h=meta.heroByName.get(state.you); const group=state.stage==='lane'?'early_game':state.stage==='mid'?'mid_game':'late_game'; const arr=h?.popular_items?.[group]||[];
+    if(!arr.length) return 'Core';
+    const counterNames=new Set(Object.keys(ITEMS));
+    const best=arr.slice().sort((a,b)=>(b.pick_pct||0)-(a.pick_pct||0)).find(x=>{const nm=meta.itemById.get(x.item_id)?.name || x.class_name; return nm && !counterNames.has(nm);});
+    return best ? (meta.itemById.get(best.item_id)?.name || best.class_name || 'Core') : 'Core';
+  }
+
+  function renderResult(r, pendingLive=false){
+    $('#emptyState').hidden=true; $('#resultBody').hidden=false;
+    $('#matchupTitle').textContent=`${state.you} vs ${state.enemies[0]} + ${state.enemies[1]}`;
+    $('#matchupSub').textContent=`${state.stage==='lane'?'Lane phase':state.stage==='mid'?'Mid game':'Late game'} · ${state.laneState} lane · full roster checked`;
+    $('#confidence').textContent=`${r.confidence} confidence`;
+    $('#buyNow').innerHTML=callHTML(r.buy); $('#ifAhead').innerHTML=callHTML(r.ahead); $('#nextDefense').innerHTML=callHTML(r.defense); $('#later').innerHTML=callHTML(r.later);
+    const core=coreNameForStage();
+    const pieces=[];
+    if(state.stage==='lane' && r.buy.name!=='Extra Stamina' && r.buy.name!=='Extra Regen'){
+      const starter=r.scored.filter(x=>['Extra Stamina','Extra Regen'].includes(x.name)).sort((a,b)=>b.score-a.score)[0];
+      if(starter && starter.score>=5.0) pieces.push(starter.name);
+    }
+    if(r.buy.name!=='Stay on core' && !pieces.includes(r.buy.name)) pieces.push(r.buy.name);
+    pieces.push(core);
+    if(r.defense?.name && !['Only if needed',r.buy.name].includes(r.defense.name) && !pieces.includes(r.defense.name)) pieces.push(r.defense.name);
+    if(r.later?.name && !r.later.name.startsWith('Return') && !pieces.includes(r.later.name)) pieces.push(r.later.name);
+    $('#pathText').textContent=pieces.join(' → ');
+    $('#dataDot').className='dot'+(r.liveSignal?' live':'');
+    $('#dataNote').textContent = pendingLive ? 'Curated matchup call shown immediately. Checking recent Oracle–Eternus item purchases…' : r.liveSignal ? r.liveSignal : 'Using curated matchup mechanics. Live high-rank item data was unavailable, so it did not influence the call.';
+    const top=r.scored.slice(0,6).map(x=>`<div class="mini"><b>${esc(x.name)}</b>Matchup score ${x.score.toFixed(1)}</div>`).join('');
+    $('#detail').innerHTML=`<div class="detail-grid">${top}</div><div style="margin-top:8px">The score weights your lane heavily in lane phase, then shifts toward the full six-hero roster in mid/late game. Expensive items are penalized before their timing. Live high-rank purchase behavior is used only as a tie-breaker so popularity cannot override a bad mechanical fit.</div>`;
+  }
+
+  function statIndex(rows){ const map=new Map(); for(const r of Array.isArray(rows)?rows:[]) map.set(r.item_id,r); return map; }
+  function normalizedPresence(row,maxMatches){ return row && maxMatches>0 ? Math.max(0,Math.min(1,row.matches/maxMatches)) : 0; }
+  async function addLiveSignal(r){
+    const me=meta.heroByName.get(state.you); if(!me?.id || !meta.online) return r;
+    const laneIds=state.enemies.slice(0,2).map(n=>meta.heroByName.get(n)?.id).filter(Number.isFinite); const allIds=state.enemies.map(n=>meta.heroByName.get(n)?.id).filter(Number.isFinite);
+    if(laneIds.length!==2||allIds.length!==6) return r;
+    const qsBase=`hero_ids=${encodeURIComponent(me.id)}&min_average_badge=81&min_matches=20&corrupted_items=include`;
+    const urls=[
+      `${API}/v1/analytics/item-stats?${qsBase}`,
+      `${API}/v1/analytics/item-stats?${qsBase}&enemy_hero_ids=${laneIds.join(',')}&enemy_hero_ids_all_match=true&same_lane_filter=true`,
+      `${API}/v1/analytics/item-stats?${qsBase}&enemy_hero_ids=${allIds.join(',')}`
+    ];
+    const [baseRows,laneRows,teamRows]=await Promise.all(urls.map(u=>fetchJSON(u,7000)));
+    if(!baseRows||!laneRows||!teamRows) return r;
+    const B=statIndex(baseRows),L=statIndex(laneRows),T=statIndex(teamRows); const maxB=Math.max(1,...baseRows.map(x=>x.matches||0)),maxL=Math.max(1,...laneRows.map(x=>x.matches||0)),maxT=Math.max(1,...teamRows.map(x=>x.matches||0));
+    let touched=[];
+    for(const x of r.scored){ const im=meta.items.get(x.name); if(!im?.id) continue; const b=normalizedPresence(B.get(im.id),maxB), l=normalizedPresence(L.get(im.id),maxL), t=normalizedPresence(T.get(im.id),maxT); const uplift=(l-b)*2.2+(t-b)*.7; const sample=Math.min(1,((L.get(im.id)?.matches||0)/80)); x.liveAdj=uplift*sample; x.score+=x.liveAdj; if(Math.abs(x.liveAdj)>.12) touched.push({x,lrow:L.get(im.id),adj:x.liveAdj}); }
+    // Rebuild only close decisions; hard matchup rules remain dominant.
+    r.scored.sort((a,b)=>b.score-a.score); const maxTier=stageWeights().maxTier;
+    const contenders=r.scored.filter(x=>(ITEMS[x.name]?.tier||9)<=maxTier);
+    if(r.buy.name!=='Stay on core' && contenders[0] && contenders[0].score > r.buy.score+.45) r.buy=contenders[0];
+    const laneStat=meta.items.get(r.buy.name)?.id ? L.get(meta.items.get(r.buy.name).id) : null;
+    const time=laneStat?.avg_buy_time_s ? Math.round(laneStat.avg_buy_time_s/60) : null;
+    r.liveSignal=`Live high-rank check applied: Oracle–Eternus, trailing 30 days${time?`; ${r.buy.name} averages about ${time} min in this lane-filtered sample`:''}.`;
+    if(touched.length) r.confidence = r.confidence==='Situational'?'Good':r.confidence;
+    return r;
+  }
+
+  async function fetchJSON(url,timeout=6000){
+    const c=new AbortController(); const id=setTimeout(()=>c.abort(),timeout); try{const res=await fetch(url,{signal:c.signal,mode:'cors'}); if(!res.ok) return null; return await res.json();}catch(_){return null;}finally{clearTimeout(id);}
+  }
+
+  async function loadLiveData(){
+    const [heroes,items,steam]=await Promise.all([
+      fetchJSON(`${API}/v1/assets/heroes`,7000), fetchJSON(`${API}/v1/assets/items`,7000), fetchJSON(`${API}/v1/assets/steam-info`,7000)
+    ]);
+    if(Array.isArray(heroes) && heroes.length){
+      meta.heroes=heroes.filter(h=>h.player_selectable!==false && !h.disabled && (!h.development_state || h.development_state==='release'));
+      meta.heroByName=new Map(meta.heroes.map(h=>[h.name,h])); meta.online=true;
+    }
+    if(Array.isArray(items) && items.length){
+      for(const i of items){ if(i?.name){meta.items.set(i.name,i); if(Number.isFinite(i.id))meta.itemById.set(i.id,i);} }
+    }
+    meta.steam=steam||null;
+    if(meta.online){ $('#patchPill').textContent=`Live patch data${steam?.version_date?` · ${steam.version_date}`:''}`; $('#patchPill').classList.add('live'); }
+    else { $('#patchPill').textContent='Live data unavailable · fallback rules active'; $('#patchPill').classList.add('warn'); }
+    renderSlots();
+  }
+
+  $('#search').addEventListener('input',renderPicker);
+  $('#laneStateSeg').addEventListener('click',e=>{const b=e.target.closest('button[data-val]'); if(!b)return; state.laneState=b.dataset.val; [...$('#laneStateSeg').querySelectorAll('button')].forEach(x=>x.classList.toggle('on',x===b)); savePrefs();});
+  $('#stageSelect').addEventListener('change',e=>{state.stage=e.target.value; savePrefs();});
+  $('#clearBtn').addEventListener('click',()=>{state.enemies=['','','','','','']; state.active=state.you?'e0':'you'; $('#resultBody').hidden=true; $('#emptyState').hidden=false; renderSlots(); renderPickerLabel();});
+  $('#goBtn').addEventListener('click',async()=>{
+    if($('#goBtn').disabled)return;
+    const r=curatedRecommendation(); renderResult(r,true); $('#goBtn').textContent='CHECKING HIGH-RANK DATA…'; $('#goBtn').disabled=true;
+    try{const updated=await addLiveSignal(r); renderResult(updated,false);}catch(_){renderResult(r,false);}finally{$('#goBtn').textContent='GO — GIVE ME THE BUY'; renderSlots();}
+  });
+  $('#detailToggle').addEventListener('click',()=>{const d=$('#detail'); d.classList.toggle('show'); $('#detailToggle').textContent=d.classList.contains('show')?'Hide scoring':'Why these picks?';});
+
+  loadPrefs(); $('#stageSelect').value=state.stage; [...$('#laneStateSeg').querySelectorAll('button')].forEach(x=>x.classList.toggle('on',x.dataset.val===state.laneState)); state.active=state.you?'e0':'you'; renderSlots(); renderPickerLabel(); loadLiveData();
+})();
+</script>
+</body>
+</html>
