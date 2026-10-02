@@ -145,6 +145,7 @@ Return only the requested JSON structure.`;
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'POST required' });
 
+  let phase = 'input';
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
     const hero = String(body.hero || '').trim();
@@ -156,6 +157,7 @@ module.exports = async function handler(req, res) {
       return json(res, 400, { error: 'Invalid matchup payload' });
     }
 
+    phase = 'live Deadlock data';
     const { heroes, items, steam } = await getAssets();
     const me = byName(heroes, hero, heroName);
     const enemyHeroes = enemies.map(n=>byName(heroes,n,heroName)).filter(Boolean);
@@ -181,6 +183,7 @@ module.exports = async function handler(req, res) {
       [baseRows,laneRows,teamRows] = await Promise.all(urls.map(u=>fetchJSON(u,9000).catch(()=>[])));
     }
 
+    phase = 'high-rank data';
     const highRank = summarizeStats(candidateItems, baseRows, laneRows, teamRows);
     const matchup = {
       patch: steam ? { version: steam.version, version_date: steam.version_date, build_id: steam.build_id } : null,
@@ -193,8 +196,17 @@ module.exports = async function handler(req, res) {
       local_engine_advisory: body.localRecommendation || null,
     };
 
-    const token = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
-    if (!token) return json(res, 503, { error: 'AI Gateway authentication is not configured on this Vercel project', code: 'AI_AUTH_MISSING' });
+    phase = 'AI authentication';
+    let token = process.env.AI_GATEWAY_API_KEY || null;
+    if (!token) {
+      try {
+        const { getVercelOidcToken } = await import('@vercel/oidc');
+        token = await getVercelOidcToken();
+      } catch (_) {
+        token = process.env.VERCEL_OIDC_TOKEN || null;
+      }
+    }
+    if (!token) return json(res, 503, { error: 'AI Gateway authentication is not configured on this Vercel project', code: 'AI_AUTH_MISSING', phase });
 
     const schema = {
       type:'object',
@@ -211,6 +223,7 @@ module.exports = async function handler(req, res) {
       additionalProperties:false,
     };
 
+    phase = 'GPT-5.6 Sol request';
     const aiRes = await fetch(AI_GATEWAY, {
       method:'POST',
       headers:{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'},
@@ -229,6 +242,7 @@ module.exports = async function handler(req, res) {
     if (!aiRes.ok) {
       return json(res, 502, { error: aiData?.error?.message || `AI Gateway error ${aiRes.status}`, code:'AI_GATEWAY_ERROR' });
     }
+    phase = 'AI response parsing';
     const output = extractOutputText(aiData);
     let rec;
     try { rec = JSON.parse(output); } catch (_) { return json(res, 502, { error:'AI returned invalid structured output', code:'AI_PARSE_ERROR' }); }
@@ -249,6 +263,6 @@ module.exports = async function handler(req, res) {
 
     return json(res, 200, rec);
   } catch (err) {
-    return json(res, 500, { error: err?.message || 'Unknown server error', code:'SERVER_ERROR' });
+    return json(res, 500, { error: `${phase}: ${err?.message || 'Unknown server error'}`, code:'SERVER_ERROR', phase });
   }
 };
