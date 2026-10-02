@@ -6,6 +6,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@vercel/oidc": "latest"
+    "ai": "latest",
+    "zod": "latest"
   }
 }
