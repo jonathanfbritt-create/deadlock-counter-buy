@@ -1,4 +1,3 @@
-const AI_GATEWAY = 'https://ai-gateway.vercel.sh/v1/responses';
 const MODEL = 'openai/gpt-5.6-sol';
 
 function send(res, status, body) {
@@ -54,7 +53,7 @@ module.exports = async function handler(req, res) {
       ok: true,
       route: '/api/recommend',
       model: MODEL,
-      gateway_auth_present: Boolean(process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN),
+      auth_mode: process.env.AI_GATEWAY_API_KEY ? 'api-key' : 'vercel-oidc-auto',
       runtime: process.version
     });
   }
@@ -73,15 +72,8 @@ module.exports = async function handler(req, res) {
       return send(res, 400, { error: 'Invalid matchup payload', phase });
     }
 
-    phase = 'AI authentication';
-    const token = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
-    if (!token) {
-      return send(res, 503, {
-        error: 'AI Gateway authentication is not configured on this Vercel project.',
-        code: 'AI_AUTH_MISSING',
-        phase
-      });
-    }
+    phase = 'AI SDK setup';
+    const [{ generateObject }, { z }] = await Promise.all([import('ai'), import('zod')]);
 
     const allowedNames = new Set();
     for (const x of arr(body.localCandidates)) if (x?.name) allowedNames.add(normalizeName(x.name));
@@ -89,40 +81,15 @@ module.exports = async function handler(req, res) {
     const coreName = normalizeName(body.localRecommendation?.core);
     if (coreName && coreName !== 'Core') allowedNames.add(coreName);
 
-    const schema = {
-      type: 'object',
-      properties: {
-        buy_now: {
-          type: 'object',
-          properties: { item: { type: 'string' }, why: { type: 'string' } },
-          required: ['item','why'],
-          additionalProperties: false
-        },
-        if_ahead: {
-          type: 'object',
-          properties: { item: { type: 'string' }, why: { type: 'string' } },
-          required: ['item','why'],
-          additionalProperties: false
-        },
-        next_defense: {
-          type: 'object',
-          properties: { item: { type: 'string' }, why: { type: 'string' } },
-          required: ['item','why'],
-          additionalProperties: false
-        },
-        later: {
-          type: 'object',
-          properties: { item: { type: 'string' }, why: { type: 'string' } },
-          required: ['item','why'],
-          additionalProperties: false
-        },
-        path: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 7 },
-        confidence: { type: 'string', enum: ['High','Good','Situational'] },
-        key_reason: { type: 'string' }
-      },
-      required: ['buy_now','if_ahead','next_defense','later','path','confidence','key_reason'],
-      additionalProperties: false
-    };
+    const schema = z.object({
+      buy_now: z.object({ item: z.string(), why: z.string() }),
+      if_ahead: z.object({ item: z.string(), why: z.string() }),
+      next_defense: z.object({ item: z.string(), why: z.string() }),
+      later: z.object({ item: z.string(), why: z.string() }),
+      path: z.array(z.string()).min(2).max(7),
+      confidence: z.enum(['High','Good','Situational']),
+      key_reason: z.string()
+    });
 
     const matchup = {
       player: hero,
@@ -141,72 +108,21 @@ module.exports = async function handler(req, res) {
     phase = 'GPT-5.6 Sol request';
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 45000);
-
-    let aiRes;
+    let rec;
     try {
-      aiRes = await fetch(AI_GATEWAY, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          reasoning: { effort: 'high' },
-          max_output_tokens: 1400,
-          store: false,
-          instructions: SYSTEM,
-          input: 'Analyze this exact Deadlock matchup and return the best counter-buy path.\n\n' + JSON.stringify(matchup),
-          text: {
-            format: {
-              type: 'json_schema',
-              name: 'deadlock_counter_buy',
-              strict: true,
-              schema
-            }
-          }
-        })
+      const result = await generateObject({
+        model: MODEL,
+        schema,
+        system: SYSTEM,
+        prompt: 'Analyze this exact Deadlock matchup and return the best counter-buy path.\n\n' + JSON.stringify(matchup),
+        abortSignal: controller.signal
       });
+      rec = result.object;
     } finally {
       clearTimeout(timer);
     }
 
-    const raw = await aiRes.text();
-    let aiData = null;
-    try { aiData = JSON.parse(raw); } catch (_) {}
-
-    if (!aiRes.ok) {
-      const msg = aiData?.error?.message || aiData?.message || raw.slice(0, 700) || ('AI Gateway error ' + aiRes.status);
-      return send(res, 502, {
-        error: 'GPT-5.6 Sol request: ' + msg,
-        code: 'AI_GATEWAY_ERROR',
-        gateway_status: aiRes.status,
-        phase
-      });
-    }
-
-    phase = 'AI response parsing';
-    const output = textFromResponse(aiData);
-    if (!output) {
-      return send(res, 502, {
-        error: 'AI response parsing: no output text was returned.',
-        code: 'AI_EMPTY_OUTPUT',
-        phase
-      });
-    }
-
-    let rec;
-    try {
-      rec = JSON.parse(output);
-    } catch (_) {
-      return send(res, 502, {
-        error: 'AI response parsing: model returned invalid JSON.',
-        code: 'AI_PARSE_ERROR',
-        phase
-      });
-    }
-
+    phase = 'AI response validation';
     function validateChoice(value) {
       const name = normalizeName(value);
       if (isSpecial(name)) return name;
