@@ -106,7 +106,7 @@
     <div class="status">
       <span class="pill" id="patchPill">Patch data: loading…</span>
       <span class="pill" id="rankPill">High-rank signal: Oracle–Eternus</span>
-      <span class="pill ai" id="aiPill">AI: ready</span>
+      <span class="pill ai ok" id="aiPill">AI: use private ChatGPT plugin</span>
     </div>
   </div>
 
@@ -177,7 +177,7 @@
         </div>
       </section>
 
-      <div class="foot">Hybrid engine: an instant local matchup call appears first, then GPT-5.6 Sol verifies or updates it using current Deadlock hero/item data and recent Oracle–Eternus purchase statistics. If AI is unavailable, the local engine remains usable. This is an independent fan tool and is not affiliated with Valve.</div>
+      <div class="foot">Free fallback engine: this standalone page uses the local matchup rules plus live Deadlock/high-rank data only. For ChatGPT reasoning with no separate AI API bill, use the private Deadlock Counter-Buy plugin in ChatGPT. This is an independent fan tool and is not affiliated with Valve.</div>
     </main>
   </div>
 </div>
@@ -534,22 +534,16 @@
     if($('#goBtn').disabled)return;
     const local=curatedRecommendation();
     renderResult(local,true);
-    $('#aiPill').textContent='AI: checking…'; $('#aiPill').className='pill ai';
     $('#goBtn').textContent='CHECKING LIVE DATA…'; $('#goBtn').disabled=true;
     let live=local;
     try{
       live=await addLiveSignal(local);
       renderResult(live,false);
-      $('#goBtn').textContent='AI VERIFYING…';
-      const ai=await askAI(live);
-      const finalResult=aiResultToEngine(ai,live);
-      renderResult(finalResult,false);
-      $('#aiPill').textContent=ai.verdict==='verified'?'AI: VERIFIED':'AI: UPDATED';
-      $('#aiPill').className='pill ai '+(ai.verdict==='verified'?'ok':'updated');
+      $('#aiPill').textContent='AI: use private ChatGPT plugin';
+      $('#aiPill').className='pill ai ok';
     }catch(err){
-      renderResult(live,false);
-      $('#aiPill').textContent='AI: local fallback'; $('#aiPill').className='pill ai warn';
-      $('#dataNote').textContent=`Local + high-rank engine used. AI verification unavailable${err?.message?`: ${err.message}`:''}.`;
+      renderResult(local,false);
+      $('#dataNote').textContent='Local engine used. Live high-rank data was unavailable.';
     }finally{
       $('#goBtn').textContent='GO — GIVE ME THE BUY';
       renderSlots();
