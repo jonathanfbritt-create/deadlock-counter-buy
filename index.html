@@ -24,6 +24,9 @@
   .pill{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 10px;font-size:12px;color:var(--muted);white-space:nowrap}
   .pill.live{color:#c9e9d7;border-color:#365545}
   .pill.warn{color:#f1d7aa;border-color:#665338}
+  .pill.ai{color:#ece3a9;border-color:#655f34;background:#1b1a12}
+  .pill.ai.ok{color:#c9e9d7;border-color:#365545;background:#111915}
+  .pill.ai.updated{color:#f1d7aa;border-color:#665338;background:#1b1710}
 
   .layout{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow)}
@@ -103,6 +106,7 @@
     <div class="status">
       <span class="pill" id="patchPill">Patch data: loading…</span>
       <span class="pill" id="rankPill">High-rank signal: Oracle–Eternus</span>
+      <span class="pill ai" id="aiPill">AI: ready</span>
     </div>
   </div>
 
@@ -173,7 +177,7 @@
         </div>
       </section>
 
-      <div class="foot">Uses live Deadlock game data and high-rank item purchase data when the public Deadlock API is reachable. Counter logic is intentionally conservative: a counter item must solve a specific threat, fit your hero, and be worth delaying core progression. This is an independent fan tool and is not affiliated with Valve.</div>
+      <div class="foot">Hybrid engine: an instant local matchup call appears first, then GPT-6 Sol verifies or updates it using current Deadlock hero/item data and recent Oracle–Eternus purchase statistics. If AI is unavailable, the local engine remains usable. This is an independent fan tool and is not affiliated with Valve.</div>
     </main>
   </div>
 </div>
@@ -378,19 +382,64 @@
     $('#buyNow').innerHTML=callHTML(r.buy); $('#ifAhead').innerHTML=callHTML(r.ahead); $('#nextDefense').innerHTML=callHTML(r.defense); $('#later').innerHTML=callHTML(r.later);
     const core=coreNameForStage();
     const pieces=[];
-    if(state.stage==='lane' && r.buy.name!=='Extra Stamina' && r.buy.name!=='Extra Regen'){
-      const starter=r.scored.filter(x=>['Extra Stamina','Extra Regen'].includes(x.name)).sort((a,b)=>b.score-a.score)[0];
-      if(starter && starter.score>=5.0) pieces.push(starter.name);
+    if(Array.isArray(r.pathOverride) && r.pathOverride.length){
+      $('#pathText').textContent=r.pathOverride.join(' → ');
+    }else{
+      if(state.stage==='lane' && r.buy.name!=='Extra Stamina' && r.buy.name!=='Extra Regen'){
+        const starter=r.scored.filter(x=>['Extra Stamina','Extra Regen'].includes(x.name)).sort((a,b)=>b.score-a.score)[0];
+        if(starter && starter.score>=5.0) pieces.push(starter.name);
+      }
+      if(r.buy.name!=='Stay on core' && !pieces.includes(r.buy.name)) pieces.push(r.buy.name);
+      pieces.push(core);
+      if(r.defense?.name && !['Only if needed',r.buy.name].includes(r.defense.name) && !pieces.includes(r.defense.name)) pieces.push(r.defense.name);
+      if(r.later?.name && !r.later.name.startsWith('Return') && !pieces.includes(r.later.name)) pieces.push(r.later.name);
+      $('#pathText').textContent=pieces.join(' → ');
     }
-    if(r.buy.name!=='Stay on core' && !pieces.includes(r.buy.name)) pieces.push(r.buy.name);
-    pieces.push(core);
-    if(r.defense?.name && !['Only if needed',r.buy.name].includes(r.defense.name) && !pieces.includes(r.defense.name)) pieces.push(r.defense.name);
-    if(r.later?.name && !r.later.name.startsWith('Return') && !pieces.includes(r.later.name)) pieces.push(r.later.name);
-    $('#pathText').textContent=pieces.join(' → ');
     $('#dataDot').className='dot'+(r.liveSignal?' live':'');
-    $('#dataNote').textContent = pendingLive ? 'Curated matchup call shown immediately. Checking recent Oracle–Eternus item purchases…' : r.liveSignal ? r.liveSignal : 'Using curated matchup mechanics. Live high-rank item data was unavailable, so it did not influence the call.';
+    $('#dataNote').textContent = r.aiNote || (pendingLive ? 'Instant local call shown. Checking recent Oracle–Eternus purchases before AI verification…' : r.liveSignal ? r.liveSignal : 'Using curated matchup mechanics. Live high-rank item data was unavailable, so it did not influence the call.');
     const top=r.scored.slice(0,6).map(x=>`<div class="mini"><b>${esc(x.name)}</b>Matchup score ${x.score.toFixed(1)}</div>`).join('');
-    $('#detail').innerHTML=`<div class="detail-grid">${top}</div><div style="margin-top:8px">The score weights your lane heavily in lane phase, then shifts toward the full six-hero roster in mid/late game. Expensive items are penalized before their timing. Live high-rank purchase behavior is used only as a tie-breaker so popularity cannot override a bad mechanical fit.</div>`;
+    const aiLine=r.aiReason?`<div style="margin-top:8px"><b style="color:var(--soft)">AI read:</b> ${esc(r.aiReason)}</div>`:'';
+    $('#detail').innerHTML=`<div class="detail-grid">${top}</div><div style="margin-top:8px">The local score weights your lane heavily in lane phase, then shifts toward the full six-hero roster in mid/late game. Expensive items are penalized before their timing. High-rank purchase behavior is evidence, not a command.</div>${aiLine}`;
+  }
+
+  function aiResultToEngine(ai, base){
+    return {
+      ...base,
+      buy:{name:ai.buy_now.item,why:ai.buy_now.why},
+      ahead:{name:ai.if_ahead.item,why:ai.if_ahead.why},
+      defense:{name:ai.next_defense.item,why:ai.next_defense.why},
+      later:{name:ai.later.item,why:ai.later.why},
+      confidence:ai.confidence||base.confidence,
+      pathOverride:Array.isArray(ai.path)?ai.path:[],
+      aiReason:ai.key_reason||'',
+      aiNote:`${ai.verdict==='verified'?'AI VERIFIED':'AI UPDATED'} · ${ai.model||'OpenAI reasoning model'}${ai.high_rank_data?' · live high-rank data checked':''}.`,
+      liveSignal:base.liveSignal||'live data checked'
+    };
+  }
+
+  async function askAI(base){
+    const payload={
+      hero:state.you,
+      lane:state.enemies.slice(0,2),
+      enemies:state.enemies.slice(),
+      laneState:state.laneState,
+      stage:state.stage,
+      localCandidates:base.scored.slice(0,12).map(x=>({name:x.name,score:+x.score.toFixed(2),why:x.why})),
+      localRecommendation:{
+        buy:{name:base.buy.name,why:base.buy.why},
+        ahead:{name:base.ahead.name,why:base.ahead.why},
+        defense:{name:base.defense?.name,why:base.defense?.why},
+        later:{name:base.later?.name,why:base.later?.why},
+        core:coreNameForStage()
+      }
+    };
+    const c=new AbortController(); const id=setTimeout(()=>c.abort(),30000);
+    try{
+      const res=await fetch('/api/recommend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:c.signal});
+      const data=await res.json().catch(()=>null);
+      if(!res.ok) throw new Error(data?.error||`AI request failed (${res.status})`);
+      return data;
+    }finally{clearTimeout(id);}
   }
 
   function statIndex(rows){ const map=new Map(); for(const r of Array.isArray(rows)?rows:[]) map.set(r.item_id,r); return map; }
@@ -448,8 +497,28 @@
   $('#clearBtn').addEventListener('click',()=>{state.enemies=['','','','','','']; state.active=state.you?'e0':'you'; $('#resultBody').hidden=true; $('#emptyState').hidden=false; renderSlots(); renderPickerLabel();});
   $('#goBtn').addEventListener('click',async()=>{
     if($('#goBtn').disabled)return;
-    const r=curatedRecommendation(); renderResult(r,true); $('#goBtn').textContent='CHECKING HIGH-RANK DATA…'; $('#goBtn').disabled=true;
-    try{const updated=await addLiveSignal(r); renderResult(updated,false);}catch(_){renderResult(r,false);}finally{$('#goBtn').textContent='GO — GIVE ME THE BUY'; renderSlots();}
+    const local=curatedRecommendation();
+    renderResult(local,true);
+    $('#aiPill').textContent='AI: checking…'; $('#aiPill').className='pill ai';
+    $('#goBtn').textContent='CHECKING LIVE DATA…'; $('#goBtn').disabled=true;
+    let live=local;
+    try{
+      live=await addLiveSignal(local);
+      renderResult(live,false);
+      $('#goBtn').textContent='AI VERIFYING…';
+      const ai=await askAI(live);
+      const finalResult=aiResultToEngine(ai,live);
+      renderResult(finalResult,false);
+      $('#aiPill').textContent=ai.verdict==='verified'?'AI: VERIFIED':'AI: UPDATED';
+      $('#aiPill').className='pill ai '+(ai.verdict==='verified'?'ok':'updated');
+    }catch(err){
+      renderResult(live,false);
+      $('#aiPill').textContent='AI: local fallback'; $('#aiPill').className='pill ai warn';
+      $('#dataNote').textContent=`Local + high-rank engine used. AI verification unavailable${err?.message?`: ${err.message}`:''}.`;
+    }finally{
+      $('#goBtn').textContent='GO — GIVE ME THE BUY';
+      renderSlots();
+    }
   });
   $('#detailToggle').addEventListener('click',()=>{const d=$('#detail'); d.classList.toggle('show'); $('#detailToggle').textContent=d.classList.contains('show')?'Hide scoring':'Why these picks?';});
 
