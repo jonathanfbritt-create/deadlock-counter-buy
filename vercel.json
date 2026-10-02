@@ -1,8 +1,5 @@
 {
   "functions": {
-    "api/recommend.js": {
-      "maxDuration": 60
-    },
     "api/mcp.mjs": {
       "maxDuration": 60
     }
