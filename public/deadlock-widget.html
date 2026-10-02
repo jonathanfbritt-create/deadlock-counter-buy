@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Deadlock Counter-Buy</title>
+<style>
+:root{color-scheme:dark;--bg:#0c0e10;--panel:#14181b;--panel2:#1a2024;--line:#30383d;--text:#f2f4f2;--muted:#9aa5aa;--accent:#d7c46a}
+*{box-sizing:border-box}html,body{margin:0;background:transparent;color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+body{padding:12px}.app{max-width:760px;margin:0 auto;background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+header{padding:14px 14px 10px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+h1{font-size:20px;margin:0 0 4px;letter-spacing:-.02em}p{margin:0;color:var(--muted);font-size:12px;line-height:1.4}
+.patch{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 8px;white-space:nowrap}
+.body{display:grid;grid-template-columns:260px 1fr;gap:12px;padding:0 12px 12px}
+.setup,.picker{background:var(--panel);border:1px solid var(--line);border-radius:13px}.setup{padding:10px}.label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:800;color:var(--muted);margin:2px 0 7px}
+.slots{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.slot{border:1px solid var(--line);background:var(--panel2);border-radius:10px;min-height:70px;padding:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:var(--text)}
+.slot.you{grid-column:1/-1;min-height:76px;flex-direction:row;justify-content:flex-start;padding:8px 10px}.slot.active{outline:2px solid var(--accent);outline-offset:1px}.slot .meta{font-size:8px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:800}.slot .name{font-size:10px;font-weight:800;text-align:center;line-height:1.1}.slot.you .name{font-size:14px;text-align:left}
+.avatar{width:38px;height:38px;border-radius:8px;background:#262d31;border:1px solid #374046;display:grid;place-items:center;overflow:hidden;font-weight:900;color:#cbd2d4;flex:0 0 auto}.slot.you .avatar{width:48px;height:48px}.avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.controls label{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:800;margin-bottom:4px}
+select{width:100%;background:#101417;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px}.go{width:100%;margin-top:9px;border:0;border-radius:10px;padding:11px;background:var(--accent);color:#16150f;font-weight:900;cursor:pointer}.go:disabled{opacity:.4;cursor:not-allowed}
+.clear{width:100%;margin-top:6px;background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:9px;padding:7px;font-size:11px;cursor:pointer}.status{margin-top:7px;font-size:10px;color:var(--muted);min-height:14px}
+.picker{overflow:hidden}.picker-head{display:flex;gap:8px;padding:9px;border-bottom:1px solid var(--line)}input{width:100%;background:#101417;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px;font-size:13px}.grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;padding:8px;max-height:350px;overflow:auto}
+.hero{border:1px solid transparent;background:transparent;color:var(--text);border-radius:9px;padding:5px 3px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;min-width:0}.hero:hover{background:var(--panel2);border-color:var(--line)}.hero.used{opacity:.28}.hero .avatar{width:44px;height:44px}.hero span:last-child{font-size:9px;line-height:1.05;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.foot{padding:0 14px 12px;color:#788287;font-size:10px;line-height:1.4}
+@media(max-width:620px){.body{grid-template-columns:1fr}.grid{grid-template-columns:repeat(4,minmax(0,1fr));max-height:300px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div><h1>Deadlock Counter-Buy</h1><p>Build the matchup, then GO. ChatGPT will fetch live matchup data and make the buy call.</p></div>
+  <div class="patch" id="patch">Live data</div>
+</header>
+<div class="body">
+  <section class="setup">
+    <div class="label">Build the matchup</div>
+    <div class="slots" id="slots"></div>
+    <div class="controls">
+      <div><label for="laneState">Lane state</label><select id="laneState"><option value="behind">Behind</option><option value="even" selected>Even</option><option value="ahead">Ahead</option></select></div>
+      <div><label for="stage">Game stage</label><select id="stage"><option value="lane" selected>Lane</option><option value="mid">Mid</option><option value="late">Late</option></select></div>
+    </div>
+    <button class="go" id="go" disabled>GO — ASK CHATGPT</button>
+    <button class="clear" id="clear">Clear enemies</button>
+    <div class="status" id="status"></div>
+  </section>
+  <section class="picker">
+    <div class="picker-head"><input id="search" type="search" placeholder="Search heroes…" autocomplete="off"></div>
+    <div class="grid" id="grid"></div>
+  </section>
+</div>
+<div class="foot">The plugin does not call a paid AI API. GO sends your matchup back into this ChatGPT conversation; ChatGPT then uses the plugin's live Deadlock data tool before answering.</div>
+</div>
+<script type="module">
+const state={heroes:[],you:"",enemies:["","","","","",""],active:"you"};
+const $=s=>document.querySelector(s);
+const slotKeys=["you","e0","e1","e2","e3","e4","e5"];
+const label=k=>k==="you"?"You":Number(k.slice(1))<2?`Lane ${Number(k.slice(1))+1}`:`Enemy ${Number(k.slice(1))+1}`;
+const val=k=>k==="you"?state.you:state.enemies[Number(k.slice(1))];
+const setVal=(k,v)=>{if(k==="you")state.you=v;else state.enemies[Number(k.slice(1))]=v};
+const initials=n=>String(n||"?").replace(/^The\s+/,"").split(/[\s&]+/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase();
+const heroByName=n=>state.heroes.find(h=>h.name===n);
+function avatar(name){
+  const h=heroByName(name); const img=h?.image;
+  return `<span class="avatar">${img?`<img src="${img.replace(/"/g,"&quot;")}" alt="" onerror="this.remove();this.parentNode.textContent='${initials(name)}'">`:initials(name)}</span>`;
+}
+function nextEmpty(after){
+  const i=Math.max(0,slotKeys.indexOf(after));
+  for(let x=1;x<=slotKeys.length;x++){const k=slotKeys[(i+x)%slotKeys.length];if(!val(k))return k}
+  return after;
+}
+function renderSlots(){
+  const root=$("#slots");root.innerHTML="";
+  for(const k of slotKeys){
+    const n=val(k);const b=document.createElement("button");b.type="button";b.className="slot"+(k==="you"?" you":"")+(state.active===k?" active":"");
+    b.innerHTML=`${n?avatar(n):'<span class="avatar">+</span>'}<span><span class="meta">${label(k)}</span><span class="name">${n||"Choose"}</span></span>`;
+    b.onclick=()=>{state.active=k;renderSlots()};
+    root.appendChild(b);
+  }
+  const ready=state.you&&state.enemies.every(Boolean)&&new Set(state.enemies).size===6&&!state.enemies.includes(state.you);
+  $("#go").disabled=!ready;
+  renderGrid();
+}
+function renderGrid(){
+  const root=$("#grid");root.innerHTML="";
+  const q=$("#search").value.trim().toLowerCase();
+  const used=new Set([state.you,...state.enemies].filter(Boolean));
+  for(const h of state.heroes.filter(h=>h.name.toLowerCase().includes(q))){
+    const b=document.createElement("button");b.type="button";b.className="hero"+(used.has(h.name)?" used":"");
+    b.innerHTML=`${avatar(h.name)}<span>${h.name}</span>`;
+    b.onclick=()=>{
+      if(used.has(h.name)&&val(state.active)!==h.name)return;
+      setVal(state.active,h.name);
+      state.active=nextEmpty(state.active);
+      renderSlots();
+    };
+    root.appendChild(b);
+  }
+}
+function updateFromTool(response){
+  const data=response?.structuredContent;
+  if(Array.isArray(data?.heroes)){
+    state.heroes=data.heroes.slice().sort((a,b)=>a.name.localeCompare(b.name));
+    if(data.patch?.version_date)$("#patch").textContent="Patch "+data.patch.version_date;
+    renderSlots();
+  }
+}
+let rpcId=0;const pending=new Map();
+function rpcNotify(method,params){window.parent.postMessage({jsonrpc:"2.0",method,params},"*")}
+function rpcRequest(method,params){
+  return new Promise((resolve,reject)=>{
+    const id=++rpcId;pending.set(id,{resolve,reject});
+    window.parent.postMessage({jsonrpc:"2.0",id,method,params},"*");
+  });
+}
+window.addEventListener("message",event=>{
+  if(event.source!==window.parent)return;
+  const m=event.data;if(!m||m.jsonrpc!=="2.0")return;
+  if(typeof m.id==="number"){
+    const p=pending.get(m.id);if(!p)return;pending.delete(m.id);
+    if(m.error)p.reject(m.error);else p.resolve(m.result);
+    return;
+  }
+  if(m.method==="ui/notifications/tool-result")updateFromTool(m.params);
+},{passive:true});
+async function init(){
+  if(window.openai?.toolOutput)updateFromTool({structuredContent:window.openai.toolOutput});
+  try{
+    await rpcRequest("ui/initialize",{appInfo:{name:"deadlock-counter-buy-picker",version:"1.0.0"},appCapabilities:{},protocolVersion:"2026-01-26"});
+    rpcNotify("ui/notifications/initialized",{});
+  }catch(e){console.error(e)}
+}
+const bridgeReady=init();
+$("#search").addEventListener("input",renderGrid);
+$("#clear").onclick=()=>{state.enemies=["","","","","",""];state.active=state.you?"e0":"you";$("#status").textContent="";renderSlots()};
+$("#go").onclick=async()=>{
+  if($("#go").disabled)return;
+  $("#go").disabled=true;$("#status").textContent="Sending matchup to ChatGPT…";
+  const prompt=[
+    "Use the Deadlock Counter-Buy plugin's get_counter_buy_context tool now. Do not answer from memory.",
+    `Player hero: ${state.you}`,
+    `Lane opponents: ${state.enemies[0]} + ${state.enemies[1]}`,
+    `Other enemies: ${state.enemies.slice(2).join(", ")}`,
+    `Lane state: ${$("#laneState").value}`,
+    `Game stage: ${$("#stage").value}`,
+    "",
+    "After the tool returns, decide the best counter-buy using current item mechanics, this hero's core needs, lane matchup, full enemy roster, and recent high-rank purchase evidence.",
+    "Use these three tests: does it counter the specific problem; can my hero use it well; is it worth delaying core right now?",
+    "Keep the answer extremely glanceable: Buy now, If ahead, Next defense, Later, Simple path. One short reason each. If no counter is worth delaying core, say Stay on core."
+  ].join("\n");
+  try{
+    await bridgeReady;
+    await rpcRequest("ui/message",{role:"user",content:[{type:"text",text:prompt}]});
+    $("#status").textContent="Sent. ChatGPT is checking the matchup.";
+  }catch(e){
+    console.error(e);$("#status").textContent="Could not send to ChatGPT. Try GO again.";
+  }finally{
+    setTimeout(()=>{renderSlots()},800);
+  }
+};
+renderSlots();
+</script>
+</body>
+</html>
