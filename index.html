@@ -360,6 +360,20 @@
   function itemMeta(name){
     const live=meta.items.get(name); return {name,cost:live?.cost ?? ITEMS[name]?.cost ?? null,image:live?.image_webp||live?.image||'',type:live?.item_slot_type||ITEMS[name]?.type||''};
   }
+  function compactField(v,max=1800){
+    if(v==null)return null;
+    let s; try{s=typeof v==='string'?v:JSON.stringify(v);}catch(_){s=String(v);}
+    return s.length>max?s.slice(0,max)+'…':s;
+  }
+  function heroSnapshot(name){
+    const h=meta.heroByName.get(name);
+    return {name,id:h?.id??null,hero_type:h?.hero_type??null,tags:h?.tags??null,description:compactField(h?.description,1800),threat:profileFor(name),fit:fitFor(name)};
+  }
+  function itemSnapshot(name){
+    const i=meta.items.get(name);
+    if(!i)return {name,cost:ITEMS[name]?.cost??null,type:ITEMS[name]?.type??null};
+    return {name,cost:i.cost??null,type:i.item_slot_type??null,tier:i.item_tier??null,description:compactField(i.description,1600),passive:compactField(i.passive,1200),active:compactField(i.active,1200),properties:compactField(i.properties,1800)};
+  }
   function callHTML(call){
     if(!call) return '';
     const m=itemMeta(call.name); const isItem=!!(ITEMS[call.name]||meta.items.get(call.name));
@@ -418,13 +432,18 @@
   }
 
   async function askAI(base){
+    const candidateNames=base.scored.slice(0,14).map(x=>x.name);
     const payload={
       hero:state.you,
       lane:state.enemies.slice(0,2),
       enemies:state.enemies.slice(),
       laneState:state.laneState,
       stage:state.stage,
-      localCandidates:base.scored.slice(0,12).map(x=>({name:x.name,score:+x.score.toFixed(2),why:x.why})),
+      patch:meta.steam?{version:meta.steam.version??null,version_date:meta.steam.version_date??null,build_id:meta.steam.build_id??null}:null,
+      heroData:{player:heroSnapshot(state.you),enemies:state.enemies.map(heroSnapshot)},
+      itemData:candidateNames.map(itemSnapshot),
+      highRankEvidence:Array.isArray(base.liveEvidence)?base.liveEvidence:[],
+      localCandidates:base.scored.slice(0,14).map(x=>({name:x.name,score:+x.score.toFixed(2),why:x.why,liveAdj:+(x.liveAdj||0).toFixed(3)})),
       localRecommendation:{
         buy:{name:base.buy.name,why:base.buy.why},
         ahead:{name:base.ahead.name,why:base.ahead.why},
@@ -433,11 +452,13 @@
         core:coreNameForStage()
       }
     };
-    const c=new AbortController(); const id=setTimeout(()=>c.abort(),30000);
+    const controller=new AbortController(); const id=setTimeout(()=>controller.abort(),50000);
     try{
-      const res=await fetch('/api/recommend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:c.signal});
-      const data=await res.json().catch(()=>null);
-      if(!res.ok) throw new Error(data?.error||`AI request failed (${res.status})`);
+      const res=await fetch('/api/recommend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal});
+      const raw=await res.text();
+      let data=null; try{data=JSON.parse(raw);}catch(_){}
+      if(!res.ok) throw new Error(data?.error||raw.slice(0,600)||`AI request failed (${res.status})`);
+      if(!data) throw new Error('AI returned an unreadable response.');
       return data;
     }finally{clearTimeout(id);}
   }
@@ -466,6 +487,20 @@
     const laneStat=meta.items.get(r.buy.name)?.id ? L.get(meta.items.get(r.buy.name).id) : null;
     const time=laneStat?.avg_buy_time_s ? Math.round(laneStat.avg_buy_time_s/60) : null;
     r.liveSignal=`Live high-rank check applied: Oracle–Eternus, trailing 30 days${time?`; ${r.buy.name} averages about ${time} min in this lane-filtered sample`:''}.`;
+    r.liveEvidence=r.scored.slice(0,14).map(x=>{
+      const im=meta.items.get(x.name); if(!im?.id)return {name:x.name};
+      const b=B.get(im.id)||{}, l=L.get(im.id)||{}, t=T.get(im.id)||{};
+      return {
+        name:x.name,
+        base_matches:b.matches||0,
+        lane_matches:l.matches||0,
+        roster_matches:t.matches||0,
+        lane_avg_buy_min:l.avg_buy_time_s?+(l.avg_buy_time_s/60).toFixed(1):null,
+        roster_avg_buy_min:t.avg_buy_time_s?+(t.avg_buy_time_s/60).toFixed(1):null,
+        lane_win_rate:l.matches&&typeof l.wins==='number'?+(l.wins/l.matches).toFixed(3):null,
+        roster_win_rate:t.matches&&typeof t.wins==='number'?+(t.wins/t.matches).toFixed(3):null
+      };
+    });
     if(touched.length) r.confidence = r.confidence==='Situational'?'Good':r.confidence;
     return r;
   }
