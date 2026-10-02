@@ -1,11 +1,13 @@
 {
   "name": "deadlock-counter-buy",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
+    "@modelcontextprotocol/ext-apps": "latest",
+    "@modelcontextprotocol/sdk": "latest",
     "ai": "latest",
     "zod": "latest"
   }
