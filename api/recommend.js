@@ -1,6 +1,6 @@
 const DEADLOCK_API = 'https://api.deadlock-api.com';
 const AI_GATEWAY = 'https://ai-gateway.vercel.sh/v1/responses';
-const MODEL = 'openai/gpt-6-sol';
+const MODEL = 'openai/gpt-5.6-sol';
 
 let assetCache = { expires: 0, heroes: null, items: null, steam: null };
 
