@@ -185,7 +185,7 @@
 (() => {
   'use strict';
   const API = 'https://api.deadlock-api.com';
-  const FALLBACK_HEROES = ['Abrams','Apollo','Bebop','Billy','Calico','Celeste','The Doorman','Drifter','Dynamo','Graves','Grey Talon','Haze','Holliday','Infernus','Ivy','Kelvin','Lady Geist','Lash','McGinnis','Mina','Mirage','Mo & Krill','Paige','Paradox','Pocket','Rem','Seven','Shiv','Silver','Sinclair','Venator','Victor','Vindicta','Viscous','Vyper','Warden','Wraith','Yamato'];
+  const FALLBACK_HEROES = ['Abrams','Apollo','Bebop','Billy','Calico','Celeste','The Doorman','Drifter','Dynamo','Graves','Grey Talon','Haze','Holliday','Infernus','Ivy','Kelvin','Lady Geist','Lash','McGinnis','Mina','Mirage','Mo & Krill','Paige','Paradox','Pocket','Rat King','Rem','Seven','Shiv','Silver','Sinclair','Venator','Victor','Vindicta','Viscous','Vyper','Warden','Wraith','Yamato'];
 
   // Threat values are 0–3. They are deliberately broad: the engine uses exact special-case interactions
   // only when we have a reliable reason to do so, then lets live high-rank item data break close ties.
@@ -203,7 +203,7 @@
     'McGinnis':P(1,2,3,3,2,2,1,1,0,3,1,0,1), 'Mina':P(2,2,1,1,3,3,3,3,1,2,1,1,0),
     'Mirage':P(2,2,1,3,2,2,2,2,0,2,0,0,0), 'Mo & Krill':P(3,2,3,1,3,2,2,3,0,1,2,0,2),
     'Paige':P(2,2,2,1,3,2,1,1,0,3,1,0,0), 'Paradox':P(3,2,0,3,2,3,2,1,0,3,3,0,0),
-    'Pocket':P(1,2,2,1,3,3,3,3,0,3,0,0,0), 'Rem':P(1,2,3,1,3,2,1,1,0,3,0,0,0),
+    'Pocket':P(1,2,2,1,3,3,3,3,0,3,0,0,0), 'Rat King':P(2,3,0,3,2,2,2,2,0,2,2,0,1), 'Rem':P(1,2,3,1,3,2,1,1,0,3,0,0,0),
     'Seven':P(2,3,0,2,3,3,1,1,0,3,1,0,3), 'Shiv':P(1,2,3,3,2,3,3,3,0,2,1,0,0),
     'Silver':P(1,2,1,3,1,3,3,3,0,2,0,0,0), 'Sinclair':P(3,2,0,1,3,3,2,1,0,3,1,1,0),
     'Venator':P(1,1,0,3,1,3,2,2,0,3,0,0,0), 'Victor':P(1,1,1,3,1,3,2,2,0,2,0,0,0),
@@ -219,7 +219,7 @@
     'Holliday':{spirit:1,gun:3,channel:0},'Infernus':{spirit:2,gun:3,channel:0},'Ivy':{spirit:2,gun:2,channel:1},'Kelvin':{spirit:3,gun:1,channel:0},
     'Lady Geist':{spirit:3,gun:1,channel:0},'Lash':{spirit:3,gun:1,channel:0},'McGinnis':{spirit:2,gun:3,channel:1},'Mina':{spirit:3,gun:1,channel:0},
     'Mirage':{spirit:2,gun:3,channel:0},'Mo & Krill':{spirit:3,gun:1,channel:2},'Paige':{spirit:3,gun:1,channel:0},'Paradox':{spirit:2,gun:3,channel:0},
-    'Pocket':{spirit:3,gun:1,channel:0},'Rem':{spirit:3,gun:1,channel:0},'Seven':{spirit:3,gun:2,channel:3},'Shiv':{spirit:2,gun:3,channel:0},
+    'Pocket':{spirit:3,gun:1,channel:0},'Rat King':{spirit:1,gun:3,channel:1},'Rem':{spirit:3,gun:1,channel:0},'Seven':{spirit:3,gun:2,channel:3},'Shiv':{spirit:2,gun:3,channel:0},
     'Silver':{spirit:1,gun:3,channel:0},'Sinclair':{spirit:3,gun:1,channel:0},'Venator':{spirit:1,gun:3,channel:0},'Victor':{spirit:1,gun:3,channel:0},
     'Vindicta':{spirit:1,gun:3,channel:1},'Viscous':{spirit:3,gun:1,channel:1},'Vyper':{spirit:1,gun:3,channel:0},'Warden':{spirit:2,gun:2,channel:0},
     'Wraith':{spirit:1,gun:3,channel:0},'Yamato':{spirit:2,gun:2,channel:0}
@@ -240,7 +240,7 @@
   // Verified/high-confidence exact mobility interactions we can safely use as a bonus.
   const HEX_PRIORITY = new Set(['Kelvin','Drifter','Billy']);
   const BIG_PARRY = new Set(['Bebop','Grey Talon','Haze','Lash','Paradox','Seven','Vindicta','Wraith','Dynamo']);
-  const DISPEL_VALUE = new Set(['Kelvin','Drifter','Graves','Infernus','Lady Geist','Pocket','Seven','Warden','Wraith','Sinclair']);
+  const DISPEL_VALUE = new Set(['Kelvin','Drifter','Graves','Infernus','Lady Geist','Pocket','Rat King','Seven','Warden','Wraith','Sinclair']);
   const AIR_VALUE = new Set(['Grey Talon','Vindicta','Lash','Ivy']);
 
   const state = {you:'', enemies:['','','','','',''], active:'you', laneState:'even', stage:'lane'};
