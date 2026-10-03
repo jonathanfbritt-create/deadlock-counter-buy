@@ -145,6 +145,8 @@ $("#go").onclick=async()=>{
     "",
     "After the tool returns, decide the best counter-buy using current item mechanics, this hero's core needs, lane matchup, full enemy roster, and recent high-rank purchase evidence.",
     "Use these three tests: does it counter the specific problem; can my hero use it well; is it worth delaying core right now?",
+    "Explicitly scan all six enemies for repeated threat patterns and prefer counters that solve multiple relevant enemies when that does not sacrifice the hero's core timing.",
+    "Do not default to the same familiar counter items; compare healing, movement, hard control, damage profile, channels, and dispellable effects in this exact roster.",
     "Keep the answer extremely glanceable: Buy now, If ahead, Next defense, Later, Simple path. One short reason each. If no counter is worth delaying core, say Stay on core."
   ].join("\n");
   try{
