@@ -101,7 +101,7 @@
   <div class="top">
     <div class="brand">
       <h1>Deadlock Counter-Buy</h1>
-      <p>Pick your hero, lane duo and the other four enemies. Get one fast item call, the pivot, the next defense and the late-game answer.</p>
+      <p>Pick your hero, how you're playing, the lane duo and the other four enemies. Get a role-aware lane buy, team counter, pivot and late-game answer.</p>
     </div>
     <div class="status">
       <span class="pill" id="patchPill">Patch data: loading…</span>
@@ -130,6 +130,17 @@
             <option value="lane">Lane</option>
             <option value="mid">Mid</option>
             <option value="late">Late</option>
+          </select>
+        </div>
+        <div class="select-wrap">
+          <label for="roleSelect">Your role</label>
+          <select id="roleSelect">
+            <option value="auto">Auto</option>
+            <option value="m1">M1 / Gun</option>
+            <option value="spirit">Spirit / Ability</option>
+            <option value="utility">Support / Utility</option>
+            <option value="frontline">Frontline / Initiator</option>
+            <option value="hybrid">Hybrid</option>
           </select>
         </div>
       </div>
@@ -165,8 +176,8 @@
 
           <div class="calls">
             <div class="call"><div class="k">Buy now</div><div class="v" id="buyNow"></div></div>
-            <div class="call"><div class="k">If ahead</div><div class="v" id="ifAhead"></div></div>
-            <div class="call"><div class="k">Next defense</div><div class="v" id="nextDefense"></div></div>
+            <div class="call"><div class="k">Team counter</div><div class="v" id="ifAhead"></div></div>
+            <div class="call"><div class="k">Pivot</div><div class="v" id="nextDefense"></div></div>
             <div class="call"><div class="k">Later</div><div class="v" id="later"></div></div>
           </div>
 
@@ -185,7 +196,7 @@
 (() => {
   'use strict';
   const API = 'https://api.deadlock-api.com';
-  const FALLBACK_HEROES = ['Abrams','Apollo','Bebop','Billy','Calico','Celeste','The Doorman','Drifter','Dynamo','Graves','Grey Talon','Haze','Holliday','Infernus','Ivy','Kelvin','Lady Geist','Lash','McGinnis','Mina','Mirage','Mo & Krill','Paige','Paradox','Pocket','Rat King','Rem','Seven','Shiv','Silver','Sinclair','Venator','Victor','Vindicta','Viscous','Vyper','Warden','Wraith','Yamato'];
+  const FALLBACK_HEROES = ['Abrams','Apollo','Baba','Bebop','Billy','Calico','Celeste','Deadman Danny','The Doorman','Drifter','Dynamo','Graves','Grey Talon','Haze','Holliday','Infernus','Ivy','Kelvin','Lady Geist','Lash','McGinnis','Mina','Mirage','Mo & Krill','Nurse Harrow','Paige','Paradox','Pocket','Rat King','Rem','Seven','Shiv','Silver','Sinclair','Solomon','Venator','Victor','Vindicta','Violet','Viscous','Vyper','Warden','Wraith','Yamato'];
 
   // Threat values are 0–3. They are deliberately broad: the engine uses exact special-case interactions
   // only when we have a reliable reason to do so, then lets live high-rank item data break close ties.
@@ -209,7 +220,10 @@
     'Venator':P(1,1,0,3,1,3,2,2,0,3,0,0,0), 'Victor':P(1,1,1,3,1,3,2,2,0,2,0,0,0),
     'Vindicta':P(1,2,0,3,2,3,2,1,3,3,0,0,1), 'Viscous':P(3,3,2,1,3,2,2,2,0,2,3,0,1),
     'Vyper':P(1,2,0,3,1,3,3,3,0,2,0,0,0), 'Warden':P(3,2,1,2,2,2,1,2,0,2,1,0,0),
-    'Wraith':P(2,1,0,3,1,3,3,3,0,2,0,1,0), 'Yamato':P(1,2,2,2,2,3,3,3,0,2,1,0,0)
+    'Wraith':P(2,1,0,3,1,3,3,3,0,2,0,1,0), 'Yamato':P(1,2,2,2,2,3,3,3,0,2,1,0,0),
+    'Baba':P(2,3,0,1,3,3,3,2,1,3,1,3,3), 'Solomon':P(3,2,0,2,3,2,2,2,0,3,1,0,0),
+    'Deadman Danny':P(2,2,0,3,2,3,3,3,3,2,2,0,1), 'Violet':P(2,3,0,1,3,3,3,2,0,3,0,2,2),
+    'Nurse Harrow':P(2,3,3,3,2,3,2,2,0,2,1,0,3)
   };
 
   const FIT = {
@@ -222,28 +236,30 @@
     'Pocket':{spirit:3,gun:1,channel:0},'Rat King':{spirit:2,gun:3,channel:1},'Rem':{spirit:3,gun:1,channel:0},'Seven':{spirit:3,gun:2,channel:3},'Shiv':{spirit:2,gun:3,channel:0},
     'Silver':{spirit:1,gun:3,channel:0},'Sinclair':{spirit:3,gun:1,channel:0},'Venator':{spirit:1,gun:3,channel:0},'Victor':{spirit:1,gun:3,channel:0},
     'Vindicta':{spirit:1,gun:3,channel:1},'Viscous':{spirit:3,gun:1,channel:1},'Vyper':{spirit:1,gun:3,channel:0},'Warden':{spirit:2,gun:2,channel:0},
-    'Wraith':{spirit:1,gun:3,channel:0},'Yamato':{spirit:2,gun:2,channel:0}
+    'Wraith':{spirit:1,gun:3,channel:0},'Yamato':{spirit:2,gun:2,channel:0},
+    'Baba':{spirit:3,gun:1,channel:2},'Solomon':{spirit:3,gun:2,channel:0},'Deadman Danny':{spirit:2,gun:3,channel:1},
+    'Violet':{spirit:3,gun:1,channel:2},'Nurse Harrow':{spirit:2,gun:3,channel:3}
   };
 
   const ITEMS = {
-    'Extra Stamina':{cost:800,tier:1,type:'vitality'}, 'Extra Regen':{cost:800,tier:1,type:'vitality'},
+    'Extra Stamina':{cost:800,tier:1,type:'vitality'}, 'Extra Regen':{cost:800,tier:1,type:'vitality'}, 'Rebuttal':{cost:800,tier:1,type:'vitality'}, 'Rusted Barrel':{cost:800,tier:1,type:'spirit'},
     'Debuff Reducer':{cost:1600,tier:2,type:'vitality'}, 'Reactive Barrier':{cost:1600,tier:2,type:'vitality'},
     'Enduring Speed':{cost:1600,tier:2,type:'vitality'}, 'Slowing Hex':{cost:1600,tier:2,type:'spirit'},
-    'Healbane':{cost:1600,tier:2,type:'vitality'}, 'Cold Front':{cost:1600,tier:2,type:'spirit'},
-    'Bullet Resilience':{cost:3200,tier:3,type:'vitality'}, 'Spirit Resilience':{cost:3200,tier:3,type:'vitality'},
-    'Disarming Hex':{cost:3200,tier:3,type:'spirit'}, 'Dispel Magic':{cost:3200,tier:3,type:'vitality'},
+    'Healbane':{cost:1600,tier:2,type:'vitality'}, 'Cold Front':{cost:1600,tier:2,type:'spirit'}, 'Suppressor':{cost:1600,tier:2,type:'spirit'},
+    'Bullet Resilience':{cost:3200,tier:3,type:'vitality'}, 'Spirit Resilience':{cost:3200,tier:3,type:'vitality'}, 'Metal Skin':{cost:3200,tier:3,type:'vitality'},
+    'Disarming Hex':{cost:3200,tier:3,type:'spirit'}, 'Dispel Magic':{cost:3200,tier:3,type:'vitality'}, 'Silence Wave':{cost:3200,tier:3,type:'spirit'}, 'Toxic Bullets':{cost:3200,tier:3,type:'weapon'},
     'Counterspell':{cost:3200,tier:3,type:'vitality'}, 'Knockdown':{cost:3200,tier:3,type:'spirit'},
     'Decay':{cost:3200,tier:3,type:'spirit'}, 'Unstoppable':{cost:6400,tier:4,type:'vitality'},
-    'Cheat Death':{cost:6400,tier:4,type:'vitality'}
+    'Cheat Death':{cost:6400,tier:4,type:'vitality'}, 'Plated Armor':{cost:6400,tier:4,type:'vitality'}
   };
 
   // Verified/high-confidence exact mobility interactions we can safely use as a bonus.
   const HEX_PRIORITY = new Set(['Kelvin','Drifter','Billy']);
   const BIG_PARRY = new Set(['Bebop','Grey Talon','Haze','Lash','Paradox','Seven','Vindicta','Wraith','Dynamo']);
   const DISPEL_VALUE = new Set(['Kelvin','Drifter','Graves','Infernus','Lady Geist','Pocket','Rat King','Seven','Warden','Wraith','Sinclair']);
-  const AIR_VALUE = new Set(['Grey Talon','Vindicta','Lash','Ivy']);
+  const AIR_VALUE = new Set(['Grey Talon','Vindicta','Lash','Ivy','Deadman Danny']);
 
-  const state = {you:'', enemies:['','','','','',''], active:'you', laneState:'even', stage:'lane'};
+  const state = {you:'', enemies:['','','','','',''], active:'you', laneState:'even', stage:'lane', role:'auto'};
   const meta = {heroes:[], heroByName:new Map(), items:new Map(), itemById:new Map(), online:false, steam:null};
   const $ = s => document.querySelector(s);
 
@@ -289,8 +305,8 @@
     }
   }
 
-  function savePrefs(){ try{ localStorage.setItem('dlcb.you',state.you||''); localStorage.setItem('dlcb.stage',state.stage); localStorage.setItem('dlcb.laneState',state.laneState);}catch(_){}}
-  function loadPrefs(){ try{state.you=localStorage.getItem('dlcb.you')||''; state.stage=localStorage.getItem('dlcb.stage')||'lane'; state.laneState=localStorage.getItem('dlcb.laneState')||'even';}catch(_){} }
+  function savePrefs(){ try{ localStorage.setItem('dlcb.you',state.you||''); localStorage.setItem('dlcb.stage',state.stage); localStorage.setItem('dlcb.laneState',state.laneState); localStorage.setItem('dlcb.role',state.role);}catch(_){}}
+  function loadPrefs(){ try{state.you=localStorage.getItem('dlcb.you')||''; state.stage=localStorage.getItem('dlcb.stage')||'lane'; state.laneState=localStorage.getItem('dlcb.laneState')||'even'; state.role=localStorage.getItem('dlcb.role')||'auto';}catch(_){} }
 
   function sumThreat(names){
     const t=P(0,0,0,0,0,0,0,0,0,0,0,0,0);
