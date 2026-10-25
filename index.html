@@ -450,7 +450,7 @@
   function renderResult(r, pendingLive=false){
     $('#emptyState').hidden=true; $('#resultBody').hidden=false;
     $('#matchupTitle').textContent=`${state.you} vs ${state.enemies[0]} + ${state.enemies[1]}`;
-    $('#matchupSub').textContent=`${state.stage==='lane'?'Lane phase':state.stage==='mid'?'Mid game':'Late game'} · ${state.laneState} lane · full roster checked`;
+    $('#matchupSub').textContent=`${state.stage==='lane'?'Lane phase':state.stage==='mid'?'Mid game':'Late game'} · ${state.laneState} lane · ${inferredRole()} role · full roster checked`;
     $('#confidence').textContent=`${r.confidence} confidence`;
     $('#buyNow').innerHTML=callHTML(r.buy); $('#ifAhead').innerHTML=callHTML(r.ahead); $('#nextDefense').innerHTML=callHTML(r.defense); $('#later').innerHTML=callHTML(r.later);
     const core=coreNameForStage();
@@ -464,7 +464,7 @@
       }
       if(r.buy.name!=='Stay on core' && !pieces.includes(r.buy.name)) pieces.push(r.buy.name);
       pieces.push(core);
-      if(r.defense?.name && !['Only if needed',r.buy.name].includes(r.defense.name) && !pieces.includes(r.defense.name)) pieces.push(r.defense.name);
+      if(r.ahead?.name && r.ahead.name!=='Stay on core' && !pieces.includes(r.ahead.name)) pieces.push(r.ahead.name);
       if(r.later?.name && !r.later.name.startsWith('Return') && !pieces.includes(r.later.name)) pieces.push(r.later.name);
       $('#pathText').textContent=pieces.join(' → ');
     }
@@ -472,7 +472,7 @@
     $('#dataNote').textContent = r.aiNote || (pendingLive ? 'Instant local call shown. Checking recent Oracle–Eternus purchases before AI verification…' : r.liveSignal ? r.liveSignal : 'Using curated matchup mechanics. Live high-rank item data was unavailable, so it did not influence the call.');
     const top=r.scored.slice(0,6).map(x=>`<div class="mini"><b>${esc(x.name)}</b>Matchup score ${x.score.toFixed(1)}</div>`).join('');
     const aiLine=r.aiReason?`<div style="margin-top:8px"><b style="color:var(--soft)">AI read:</b> ${esc(r.aiReason)}</div>`:'';
-    $('#detail').innerHTML=`<div class="detail-grid">${top}</div><div style="margin-top:8px">The local score weights your lane heavily in lane phase, then shifts toward the full six-hero roster in mid/late game. Expensive items are penalized before their timing. High-rank purchase behavior is evidence, not a command.</div>${aiLine}`;
+    $('#detail').innerHTML=`<div class="detail-grid">${top}</div><div style="margin-top:8px">V2 weights lane urgency, your ${inferredRole()} role, and full-team overlap separately. Team counter favors one purchase that matters against several enemies. Expensive items are penalized before their timing. High-rank purchase behavior is evidence, not a command.</div>${aiLine}`;
   }
 
   function aiResultToEngine(ai, base){
