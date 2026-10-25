@@ -356,7 +356,7 @@
       frontline:new Set(['Rusted Barrel','Disarming Hex','Knockdown','Enduring Speed']),
       hybrid:new Set(['Healbane','Suppressor','Disarming Hex','Enduring Speed','Slowing Hex'])
     };
-    return high[role]?.has(name)?1.4:medium[role]?.has(name)?.7:0;
+    return high[role]?.has(name)?1.4:(medium[role]?.has(name)?.7:0);
   }
   function stageWeights(){return state.stage==='lane'?{lane:.68,team:.32,maxTier:2}:state.stage==='mid'?{lane:.32,team:.68,maxTier:3}:{lane:.18,team:.82,maxTier:4};}
   function scoreItem(name,lane,team){
