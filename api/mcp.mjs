@@ -327,7 +327,7 @@ function counterCoverage(candidateItems,role,enemyHeroes,buildSignals,mechanics,
     }
     const laneCovered=covered.filter(x=>laneSet.has(x));
     const fit=roleFit(name,role);
-    const fitWeight=fit==="high"?1.5:(fit==="medium"?.75:0);
+    const fitWeight = fit==="high" ? 1.5 : (fit==="medium" ? 0.75 : 0);
     return {
       item:name,
       coverage_count:covered.length,
