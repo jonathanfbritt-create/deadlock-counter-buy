@@ -320,28 +320,74 @@
   }
   function fitFor(name){ return FIT[name] || {spirit:2,gun:2,channel:0}; }
 
+
+  function inferredRole(){
+    if(state.role && state.role!=='auto') return state.role;
+    const h=meta.heroByName.get(state.you);
+    const rows=[...(h?.popular_items?.early_game||[]).slice(0,8),...(h?.popular_items?.mid_game||[]).slice(0,8)];
+    let weapon=0,spirit=0,vitality=0;
+    for(const r of rows){
+      const i=meta.itemById.get(r.item_id); const slot=String(i?.item_slot_type||'').toLowerCase(); const w=Math.max(1,Number(r.pick_pct)||0);
+      if(slot.includes('weapon'))weapon+=w; else if(slot.includes('spirit'))spirit+=w; else if(slot.includes('vital'))vitality+=w;
+    }
+    const total=weapon+spirit+vitality||1;
+    weapon/=total; spirit/=total;
+    const fit=fitFor(state.you);
+    if(weapon>=.46&&weapon>spirit+.08)return 'm1';
+    if(spirit>=.46&&spirit>weapon+.08)return 'spirit';
+    if(fit.channel>=2)return 'frontline';
+    if(fit.gun>=3&&fit.spirit<=1)return 'm1';
+    if(fit.spirit>=3&&fit.gun<=1)return 'spirit';
+    return 'hybrid';
+  }
+  function roleBonus(name){
+    const role=inferredRole();
+    const high={
+      m1:new Set(['Metal Skin','Toxic Bullets','Bullet Resilience','Plated Armor','Debuff Reducer']),
+      spirit:new Set(['Suppressor','Healbane','Spirit Resilience','Slowing Hex','Knockdown']),
+      utility:new Set(['Rusted Barrel','Disarming Hex','Knockdown','Decay','Dispel Magic','Silence Wave','Reactive Barrier']),
+      frontline:new Set(['Reactive Barrier','Debuff Reducer','Metal Skin','Bullet Resilience','Spirit Resilience','Unstoppable']),
+      hybrid:new Set(['Debuff Reducer','Reactive Barrier','Knockdown','Metal Skin','Spirit Resilience','Bullet Resilience'])
+    };
+    const medium={
+      m1:new Set(['Rusted Barrel','Disarming Hex','Spirit Resilience','Knockdown','Rebuttal']),
+      spirit:new Set(['Metal Skin','Debuff Reducer','Reactive Barrier','Decay']),
+      utility:new Set(['Metal Skin','Spirit Resilience','Bullet Resilience','Healbane','Suppressor']),
+      frontline:new Set(['Rusted Barrel','Disarming Hex','Knockdown','Enduring Speed']),
+      hybrid:new Set(['Healbane','Suppressor','Disarming Hex','Enduring Speed','Slowing Hex'])
+    };
+    return high[role]?.has(name)?1.4:medium[role]?.has(name)?.7:0;
+  }
   function stageWeights(){return state.stage==='lane'?{lane:.68,team:.32,maxTier:2}:state.stage==='mid'?{lane:.32,team:.68,maxTier:3}:{lane:.18,team:.82,maxTier:4};}
   function scoreItem(name,lane,team){
     const fit=fitFor(state.you), w=stageWeights(); const Tm=k=>(lane[k]||0)*w.lane+(team[k]||0)*w.team; let s=0,why=[];
     switch(name){
       case 'Extra Stamina': s=Tm('hard')*.35+Tm('slow')*.28+Tm('dive')*.38; if(state.stage!=='lane') s-=2; why=['cheap room to dodge and disengage']; break;
       case 'Extra Regen': s=Tm('poke')*.65; if(state.stage!=='lane') s-=2; why=['cheap sustain into repeated poke']; break;
+      case 'Rebuttal': s=Tm('dive')*.28+Tm('hard')*.18; if(state.stage!=='lane')s-=1.7; why=['cheap melee insurance only if you can actually parry their commits']; break;
+      case 'Rusted Barrel': s=Tm('gun')*.9+Tm('dive')*.18; if(state.stage!=='lane')s-=1.2; why=['cheap anti-gun active that also improves your bullet follow-up']; break;
       case 'Debuff Reducer': s=Tm('hard')*.8+Tm('slow')*.78+Tm('silence')*1.0; why=['shortens the control/debuff window']; break;
       case 'Reactive Barrier': s=Tm('hard')*1.02+Tm('silence')*.85+Tm('burst')*.28; why=['absorbs burst that follows real hard CC']; break;
       case 'Enduring Speed': s=Tm('slow')*1.12; why=['best cheap answer when slows are the main problem']; break;
       case 'Slowing Hex': s=Tm('mob')*.83+Tm('dive')*.22; s+=state.enemies.filter(x=>HEX_PRIORITY.has(x)).length*.95; if(state.laneState==='ahead')s+=1.2; if(state.laneState==='behind')s-=.7; why=['punishes key movement and turns catches into kills']; break;
       case 'Healbane': s=Tm('heal')*(.63+.17*fit.spirit); if(fit.spirit<2)s-=1; why=['efficient anti-heal if your kit applies Spirit damage often']; break;
       case 'Cold Front': s=Tm('dive')*.5+Tm('mob')*.38; if(state.laneState==='ahead')s+=.4; why=['cheap peel/catch against close-range mobility']; break;
+      case 'Suppressor': s=Tm('gun')*.78+(fit.spirit>=2?.9:0); why=['your Spirit damage automatically cuts dangerous enemy fire rate']; break;
       case 'Bullet Resilience': s=Tm('gun')*1.15+Tm('burst')*.18; why=['broad defense when weapon damage is actually carrying']; break;
       case 'Spirit Resilience': s=Tm('spirit')*1.12+Tm('burst')*.17; why=['broad defense into sustained Spirit damage']; break;
+      case 'Metal Skin': s=Tm('gun')*1.05+Tm('burst')*.2; if(inferredRole()==='m1')s+=1.15; why=[inferredRole()==='m1'?'keeps your own firing window alive while their bullets do nothing':'hard self-protection against the enemy gun window']; break;
       case 'Disarming Hex': s=Tm('gun')*.83+Tm('dive')*.28; if(state.stage==='lane')s-=1.2; why=['turns off a dangerous weapon carry during their commit']; break;
       case 'Dispel Magic': s=Tm('slow')*.55+Tm('silence')*.9; s+=state.enemies.filter(x=>DISPEL_VALUE.has(x)).length*.23; why=['cleanses the debuff that is preventing you from functioning']; break;
       case 'Counterspell': s=Tm('burst')*.45+state.enemies.filter(x=>BIG_PARRY.has(x)).length*.38; if(state.stage==='lane')s-=1; why=['parry one high-impact ability rather than tanking it']; break;
       case 'Knockdown': s=Tm('air')*.9+Tm('channel')*.72+Tm('mob')*.28; s+=state.enemies.filter(x=>AIR_VALUE.has(x)).length*.3; if(state.stage==='lane')s-=1.2; why=['reliable catch/interrupt against air mobility or channels']; break;
-      case 'Decay': s=Tm('heal')*.83+(fit.spirit<2?.65:0); if(state.stage==='lane')s-=1.4; why=['hard anti-heal when a 1,600 option is not enough or does not fit']; break;
+      case 'Decay': s=Tm('heal')*.83+(inferredRole()==='utility'?.9:0); if(state.stage==='lane')s-=1.4; why=['targeted hard anti-heal for a utility buyer']; break;
+      case 'Silence Wave': s=Tm('spirit')*.2+Tm('channel')*.15+Tm('burst')*.25; if(inferredRole()==='utility')s+=.8; if(state.stage==='lane')s-=1.4; why=['prevents important casts before they start; it does not interrupt an active channel']; break;
+      case 'Toxic Bullets': s=Tm('heal')*.72+Tm('gun')*.18; if(inferredRole()==='m1')s+=1.25; else s-=.5; if(state.stage==='lane')s-=1.5; why=['M1-friendly anti-heal that preserves your normal damage plan']; break;
       case 'Unstoppable': s=Tm('hard')*.43+Tm('silence')*.58+Tm('displace')*.72+fit.channel*.95; if(state.stage==='lane')s-=3.2; else if(state.stage==='mid')s-=.7; why=[fit.channel>=2?'protects the ability/channel your hero must complete':'protects your commit from the enemy CC chain']; break;
       case 'Cheat Death': s=Tm('burst')*.55+Tm('dive')*.38; if(state.stage!=='late')s-=2.4; why=['late emergency answer when you are being erased before you can play']; break;
+      case 'Plated Armor': s=Tm('gun')*.92; if(state.stage!=='late')s-=2.5; why=['late passive answer to repeated bullet pressure and on-hit effects']; break;
     }
+    s+=roleBonus(name);
     if(ITEMS[name].tier>w.maxTier) s-=3.5*(ITEMS[name].tier-w.maxTier);
     if(state.laneState==='behind' && ITEMS[name].cost<=1600 && state.stage==='lane') s+=.55;
     if(state.laneState==='ahead' && ['Reactive Barrier','Extra Regen'].includes(name)) s-=.35;
@@ -351,26 +397,23 @@
   function curatedRecommendation(){
     const laneNames=state.enemies.slice(0,2), all=state.enemies.slice(); const lane=sumThreat(laneNames), team=sumThreat(all), fit=fitFor(state.you);
     let scored=Object.keys(ITEMS).map(n=>scoreItem(n,lane,team)).sort((a,b)=>b.score-a.score);
+    const teamScored=Object.keys(ITEMS).map(n=>scoreItem(n,team,team)).sort((a,b)=>b.score-a.score);
     const stage=stageWeights();
     const immediate=scored.filter(x=>ITEMS[x.name].tier<=stage.maxTier);
     let buy=immediate[0];
-    // If the lane does not demand a real detour, say so instead of inventing one.
     const lanePressure=(lane.hard+lane.slow+lane.heal+lane.poke+lane.dive+lane.burst)/6;
     if(state.stage==='lane' && buy.score<4.15 && lanePressure<3.25) buy={name:'Stay on core',score:buy.score,why:'no counter is valuable enough to delay your next core spike'};
 
-    let ahead = scored.find(x=>x.name==='Slowing Hex' && x.score>3.4) || scored.find(x=>x.name==='Healbane' && x.score>4.1) || {name:'Stay on core',score:0,why:'keep your advantage instead of over-countering'};
-    if(buy.name===ahead.name) ahead = {name:'Stay on core',score:0,why:'you already bought the useful matchup tool'};
+    let ahead=teamScored.find(x=>x.name!==buy.name&&x.score>=4.15)||{name:'Stay on core',score:0,why:'no single team counter has enough coverage to justify a slot yet'};
+    let defense=scored.find(x=>x.name!==buy.name&&x.name!==ahead.name&&x.score>=4.4);
+    if(!defense) defense={name:'Only if needed',score:0,why:'pivot only when a different enemy threat actually becomes the problem'};
 
-    const defensiveNames=['Spirit Resilience','Bullet Resilience','Dispel Magic','Counterspell','Disarming Hex','Debuff Reducer','Reactive Barrier'];
-    let defense=scored.filter(x=>defensiveNames.includes(x.name) && x.name!==buy.name).sort((a,b)=>b.score-a.score)[0];
-    if(defense && defense.score<4.6) defense={name:'Only if needed',score:defense.score,why:'do not buy a defense item unless that damage/control is actually hurting you'};
-
-    let later=scored.filter(x=>ITEMS[x.name].tier>=3 && x.name!==defense?.name && x.name!==buy.name).sort((a,b)=>b.score-a.score)[0];
+    let later=scored.filter(x=>ITEMS[x.name].tier>=3&&x.name!==defense?.name&&x.name!==ahead?.name&&x.name!==buy.name).sort((a,b)=>b.score-a.score)[0];
     if(fit.channel>=2 && (team.hard+team.silence+team.displace)>=10) later={name:'Unstoppable',score:10,why:'protects the key channel/engage your hero is picked to land'};
     if(later && later.score<4.9) later={name:'Return to core scaling',score:later.score,why:'the roster does not justify another expensive counter slot'};
 
-    const confidence = (buy.score>=7.2?'High':buy.score>=5.0?'Good':'Situational');
-    return {buy,ahead,defense,later,scored,lane,team,confidence,liveSignal:null};
+    const confidence=(buy.score>=7.2?'High':buy.score>=5.0?'Good':'Situational');
+    return {buy,ahead,defense,later,scored,lane,team,confidence,liveSignal:null,role:inferredRole()};
   }
 
   function itemMeta(name){
@@ -545,6 +588,7 @@
   $('#search').addEventListener('input',renderPicker);
   $('#laneStateSeg').addEventListener('click',e=>{const b=e.target.closest('button[data-val]'); if(!b)return; state.laneState=b.dataset.val; [...$('#laneStateSeg').querySelectorAll('button')].forEach(x=>x.classList.toggle('on',x===b)); savePrefs();});
   $('#stageSelect').addEventListener('change',e=>{state.stage=e.target.value; savePrefs();});
+  $('#roleSelect').addEventListener('change',e=>{state.role=e.target.value; savePrefs();});
   $('#clearBtn').addEventListener('click',()=>{state.enemies=['','','','','','']; state.active=state.you?'e0':'you'; $('#resultBody').hidden=true; $('#emptyState').hidden=false; renderSlots(); renderPickerLabel();});
   $('#goBtn').addEventListener('click',async()=>{
     if($('#goBtn').disabled)return;
@@ -567,7 +611,7 @@
   });
   $('#detailToggle').addEventListener('click',()=>{const d=$('#detail'); d.classList.toggle('show'); $('#detailToggle').textContent=d.classList.contains('show')?'Hide scoring':'Why these picks?';});
 
-  loadPrefs(); $('#stageSelect').value=state.stage; [...$('#laneStateSeg').querySelectorAll('button')].forEach(x=>x.classList.toggle('on',x.dataset.val===state.laneState)); state.active=state.you?'e0':'you'; renderSlots(); renderPickerLabel(); loadLiveData();
+  loadPrefs(); $('#stageSelect').value=state.stage; $('#roleSelect').value=state.role; [...$('#laneStateSeg').querySelectorAll('button')].forEach(x=>x.classList.toggle('on',x.dataset.val===state.laneState)); state.active=state.you?'e0':'you'; renderSlots(); renderPickerLabel(); loadLiveData();
 })();
 </script>
 </body>
