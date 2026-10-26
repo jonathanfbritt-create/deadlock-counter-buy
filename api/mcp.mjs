@@ -554,7 +554,7 @@ function createServer(){
         const i=itemById.get(row?.item_id);
         if(i) candidateNames.add(itemName(i));
       }
-      const candidateItems=items.filter(i=>candidateNames.has(itemName(i))).slice(0,40);
+      const candidateItems=items.filter(i=>candidateNames.has(itemName(i))).slice(0,80);
       const coverage=counterCoverage(candidateItems,resolvedRole,enemyHeroes,enemyBuildSignals,enemyMechanics,lane);
       const fullPlan=fullGamePlan(coverage,core);
 
