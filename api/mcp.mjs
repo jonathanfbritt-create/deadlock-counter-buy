@@ -325,8 +325,8 @@ const HEX_MOVEMENT={
 };
 function interaction(item,h,b,m,role){
  const hero=heroName(h),hasBuild=!!b.top_items?.early_game?.length;
- const gun=(b.slot_share?.weapon||0)>=.34||(m.gun_score>=1&&!hasBuild)||m.gun_score>=2;
- const spirit=(b.slot_share?.spirit||0)>=.34||(m.spirit_score>=1&&!hasBuild)||m.spirit_score>=2;
+ const gun=(b.slot_share?.weapon||0)>=.34||m.gun_score>=2;
+ const spirit=(b.slot_share?.spirit||0)>=.34||m.spirit_score>=2;
  const cc=m.trigger_control||[],heal=m.healing||[],status=m.meaningful_debuffs||[];
  const make=(strength,ability,why,evidence="mechanics")=>({hero,strength,ability,why,evidence});
  switch(item){
