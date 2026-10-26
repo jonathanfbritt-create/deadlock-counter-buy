@@ -10,7 +10,7 @@ import {
 import { z } from "zod";
 
 const DEADLOCK_API = "https://api.deadlock-api.com";
-const WIDGET_URI = "ui://deadlock-counter-buy/picker-v1.html";
+const WIDGET_URI = "ui://deadlock-counter-buy/team-plan-v3.html";
 const widgetHtml = readFileSync(join(process.cwd(), "public", "deadlock-widget.html"), "utf8");
 
 const COUNTER_ITEM_NAMES = [
@@ -300,71 +300,139 @@ function roleFit(item,role){
   if(medium[role]?.has(item)) return "medium";
   return "neutral";
 }
+
+const PLATED_INTERACTIONS = {
+  "Baba":"Threadsap","Billy":"Blasted","Celeste":"Light Eater",
+  "Graves":"Essence Theft","Haze":"Fixation","Holliday":"Crackshot",
+  "Infernus":"Afterburn","Mina":"Love Bites","Seven":"Power Surge",
+  "Venator":"Ira Domini","Victor":"Shocking Reanimation",
+  "Vindicta":"Flight","Vyper":"Lethal Venom","Wraith":"Card Trick / Full Auto"
+};
+const PLATED_EXCEPTIONS=new Set(["Mirage","Paradox","Silver","Sinclair","Grey Talon"]);
+const ITEM_FAMILIES={
+  "Metal Skin":"bullet-defense","Bullet Resilience":"bullet-defense",
+  "Plated Armor":"on-hit-defense",
+  "Disarming Hex":"gun-denial","Rusted Barrel":"gun-denial","Suppressor":"gun-denial",
+  "Healbane":"antiheal","Toxic Bullets":"antiheal","Decay":"antiheal",
+  "Debuff Reducer":"status-defense","Dispel Magic":"status-defense",
+  "Reactive Barrier":"status-defense","Unstoppable":"status-defense",
+  "Knockdown":"interrupt","Silence Wave":"interrupt"
+};
+const HEX_MOVEMENT={
+ "Infernus":["Flame Dash"],"Mo & Krill":["Burrow"],"Mina":["Sanguine Retreat"],
+ "Sinclair":["Spectral Assistant"],"Drifter":["Stalker's Mark"],
+ "Pocket":["Flying Cloak"],"Haze":["Smoke Bomb"]
+};
+function interaction(item,h,b,m,role){
+ const hero=heroName(h),hasBuild=!!b.top_items?.early_game?.length;
+ const gun=(b.slot_share?.weapon||0)>=.34||(m.gun_score>=1&&!hasBuild)||m.gun_score>=2;
+ const spirit=(b.slot_share?.spirit||0)>=.34||(m.spirit_score>=1&&!hasBuild)||m.spirit_score>=2;
+ const cc=m.trigger_control||[],heal=m.healing||[],status=m.meaningful_debuffs||[];
+ const make=(strength,ability,why,evidence="mechanics")=>({hero,strength,ability,why,evidence});
+ switch(item){
+ case "Plated Armor":
+  if(PLATED_INTERACTIONS[hero])return make(3.6,PLATED_INTERACTIONS[hero],"chance to prevent on-hit buildup/effect","verified");
+  return gun&&!PLATED_EXCEPTIONS.has(hero)?make(.9,"Weapon fire","chance-based bullet deflection","profile"):null;
+ case "Metal Skin":return gun?make(role==="m1"?2.6:2.1,"Weapon damage","temporary bullet immunity","profile"):null;
+ case "Bullet Resilience":return gun?make(1.8,"Weapon damage","persistent bullet resistance","profile"):null;
+ case "Disarming Hex":case "Rusted Barrel":
+  return gun?make(role==="utility"?2.5:1.85,"Weapon damage","targeted gun denial","profile"):null;
+ case "Suppressor":return gun?make(role==="spirit"?2.5:1.6,"Weapon damage","spirit hits lower fire rate","profile"):null;
+ case "Spirit Resilience":return spirit?make(1.9,"Spirit damage","broad spirit protection","profile"):null;
+ case "Healbane":return heal.length&&role!=="m1"?make(role==="spirit"?2.6:1.7,heal[0],"spirit-applied antiheal"):null;
+ case "Toxic Bullets":return heal.length?make(role==="m1"?2.6:1.3,heal[0],"bullet-applied antiheal"):null;
+ case "Decay":return heal.length?make(role==="utility"?2.6:1.8,heal[0],"targeted antiheal"):null;
+ case "Reactive Barrier":return cc.length?make(2.1,cc[0],"real control trigger for barrier"):null;
+ case "Debuff Reducer":{
+  const effects=status.filter(x=>x.duration_s>=1.8).sort((x,y)=>y.duration_s-x.duration_s);
+  return effects.length?make(Math.min(2.55,1.15+effects[0].duration_s*.26),effects[0].ability,"reduces a meaningful-duration debuff"):null;
+ }
+ case "Dispel Magic":{
+  const effect=status.find(x=>x.duration_s>=2.5);
+  return effect?make(1.6,effect.ability,"only if this specific lingering debuff can be dispelled","conditional"):null;
+ }
+ case "Knockdown":
+  return m.airborne.length?make(3,m.airborne[0],"stun punishes airborne state"):
+   m.long_channels.length?make(2.75,m.long_channels[0].ability,"interrupt long vulnerable channel"):null;
+ case "Silence Wave":return m.long_channels.length?make(1,m.long_channels[0].ability,"prevents cast but does not interrupt ongoing channel","conditional"):null;
+ case "Slowing Hex":{
+  const ab=(HEX_MOVEMENT[hero]||[]).find(x=>m.movement.includes(x));
+  return ab?make(2.2,ab,"movement shutdown must be confirmed on patch","conditional"):null;
+ }
+ case "Enduring Speed":return m.slows.length?make(1.65,m.slows[0],"broad slow protection"):null;
+ case "Unstoppable":return cc.length?make(role==="frontline"?2.25:1.6,cc[0],"proactive CC immunity"):null;
+ case "Cold Front":return m.movement.length?make(1.2,m.movement[0],"close-range peel"):null;
+ default:return null;
+ }
+}
 function counterCoverage(candidateItems,role,enemyHeroes,buildSignals,mechanics,laneNames){
-  const laneSet=new Set(laneNames);
-  return candidateItems.map(i=>{
-    const name=itemName(i);
-    const covered=[];
-    for(let idx=0;idx<enemyHeroes.length;idx++){
-      const h=enemyHeroes[idx], b=buildSignals[idx], m=mechanics[idx];
-      const gun=(m.gun_score>=2)||(b?.slot_share?.weapon>=0.4);
-      const spirit=(m.spirit_score>=2)||(b?.slot_share?.spirit>=0.4);
-      let hit=false;
-      if(["Metal Skin","Rusted Barrel","Disarming Hex","Bullet Resilience","Plated Armor"].includes(name)) hit=gun;
-      else if(name==="Suppressor") hit=gun;
-      else if(["Healbane","Toxic Bullets","Decay"].includes(name)) hit=m.healing.length>0;
-      else if(name==="Reactive Barrier") hit=m.trigger_control.length>0;
-      else if(name==="Debuff Reducer") hit=m.meaningful_debuffs.length>0;
-      else if(name==="Enduring Speed") hit=m.slows.length>0;
-      else if(name==="Slowing Hex") hit=m.movement.length>0;
-      else if(name==="Spirit Resilience") hit=spirit;
-      else if(name==="Knockdown") hit=m.airborne.length>0||m.long_channels.length>0;
-      else if(name==="Rebuttal") hit=m.melee.length>0;
-      else if(name==="Dispel Magic") hit=m.meaningful_debuffs.length>0;
-      else if(name==="Unstoppable") hit=m.trigger_control.length>0||m.silences.length>0||m.disarms.length>0;
-      else if(name==="Cold Front") hit=m.movement.length>0;
-      if(hit) covered.push(heroName(h));
-    }
-    const laneCovered=covered.filter(x=>laneSet.has(x));
-    const fit=roleFit(name,role);
-    const fitWeight = fit==="high" ? 1.5 : (fit==="medium" ? 0.75 : 0);
-    return {
-      item:name,
-      coverage_count:covered.length,
-      lane_coverage_count:laneCovered.length,
-      covers:covered,
-      role_fit:fit,
-      overlap_score:+(covered.length*2+laneCovered.length*.75+fitWeight).toFixed(2)
-    };
-  }).filter(x=>x.coverage_count>0||x.role_fit!=="neutral").sort((a,b)=>b.overlap_score-a.overlap_score);
+ return candidateItems.map(i=>{
+  const item=itemName(i),interactions=enemyHeroes.map((h,j)=>interaction(item,h,buildSignals[j],mechanics[j],role)).filter(Boolean);
+  const strong=interactions.filter(x=>x.strength>=1.6),count=new Set(strong.map(x=>x.hero)).size;
+  const fit=roleFit(item,role),cost=Number(i.cost)||0,verified=interactions.filter(x=>x.evidence==="verified").length;
+  const breadth=count>=4?5.2:count>=3?3.5:count>=2?1:0;
+  const score=strong.reduce((a,x)=>a+x.strength,0)+breadth+verified*1.5+
+   (fit==="high"?1.5:fit==="medium"?.7:0)-Math.max(0,cost-1600)/1600*.28;
+  return {
+   item,cost,role_fit:fit,family:ITEM_FAMILIES[item]||item,
+   interactions:interactions.sort((x,y)=>y.strength-x.strength),
+   covers:[...new Set(interactions.map(x=>x.hero))],
+   coverage_count:new Set(interactions.map(x=>x.hero)).size,
+   strong_coverage_count:count,
+   lane_coverage_count:strong.filter(x=>laneNames.includes(x.hero)).length,
+   overlap_score:+score.toFixed(2),team_score:+score.toFixed(2),
+   primary_reason:strong.slice(0,4).map(x=>x.hero+" ("+x.ability+")").join(", "),
+   verified_interaction_count:verified
+  };
+ }).filter(x=>x.strong_coverage_count>0).sort((x,y)=>y.team_score-x.team_score);
+}
+function fullGamePlan(ranked,core){
+ const remaining=ranked.slice(),chosen=[],maxByHero=new Map();
+ for(let k=0;k<3;k++){
+  let best=null,bestScore=-Infinity;
+  for(const row of remaining){
+   const incremental=row.interactions.filter(x=>x.strength>=1.6).reduce(
+    (acc,x)=>acc+Math.max(0,x.strength-(maxByHero.get(x.hero)||0)),0);
+   const sameFamily=chosen.some(x=>x.family===row.family)?2.5:0;
+   const score=incremental+(row.strong_coverage_count>=3?2.2:0)+
+     (row.role_fit==="high"?1:0)-sameFamily-Math.max(0,row.cost-3200)/3200*.35;
+   if(score>bestScore){best=row;bestScore=score;}
+  }
+  if(!best||bestScore<2.8)break;
+  chosen.push({...best,marginal_score:+bestScore.toFixed(2)});
+  for(const x of best.interactions)if(x.strength>=1.6)
+   maxByHero.set(x.hero,Math.max(maxByHero.get(x.hero)||0,x.strength));
+  remaining.splice(remaining.indexOf(best),1);
+ }
+ return {
+  strategy:"Full team plan: six enemies weighted equally, no per-stage item gate",
+  primary:chosen[0]||null,supporting:chosen[1]||null,third:chosen[2]||null,
+  optional_substitution:remaining.find(x=>x.strong_coverage_count>=2)||null,
+  full_game_path:[core[0]?.name||"Core spike",...(chosen[0]?[chosen[0].item]:[]),"Next core spike",...(chosen[1]?[chosen[1].item]:[])],
+  guidance:"This is an entire-game plan, not a mandate to buy every item. Preserve core items and skip redundant counters."
+ };
 }
 
 const METHOD = [
-  "Decide the active problem first, then the item.",
-  "Use three tests: does the item counter these specific enemies; can the player's hero use it well; is it worth delaying the hero's next core power spike now?",
-  "Do not over-counter. If no situational item clears that bar, say Stay on core.",
-  "Counter-buying is role-dependent. Prefer the answer that lets the player's hero keep doing its job rather than the theoretically strongest 1v1 counter.",
-  "For M1 vs M1, Metal Skin can outrank Disarming Hex because it preserves the buyer's own firing window; utility heroes can prefer Disarming Hex because disabling the enemy carry protects the whole team.",
-  "Full-team coverage matters: count how many enemies are meaningfully answered by each candidate and prefer one item that solves several real threats over several narrow 1:1 purchases.",
-  "Use current common-build signals to decide whether an enemy is actually presenting gun, Spirit, healing, control, channel, or mobility pressure.",
-  "Buy now is driven by lane urgency plus role fit. Team counter is driven by full-roster overlap. Pivot is conditional on which threat becomes the real problem. Later is expensive insurance.",
-  "For newly released heroes, use the live ability mechanics, current build signals, and the derived expert-framework priors returned in this tool call.",
-  "Debuff Reducer is for meaningful duration-based debuffs/control; consider absolute time saved, not just whether CC exists.",
-  "Reactive Barrier only matters when a specific enemy ability applies Stun, Chain, Immobilize, Sleep, or Silence.",
-  "Slowing Hex is high value only when it meaningfully shuts an important movement ability and the player's hero can capitalize.",
-  "Choose antiheal by buyer role: Healbane for reliable Spirit application, Toxic Bullets for M1 application, Decay for targeted utility.",
-  "Suppressor is especially efficient for Spirit heroes into M1 threats because normal Spirit damage applies the fire-rate reduction.",
-  "Knockdown gains teamwide value when multiple enemies rely on aerial states or long interruptible channels.",
-  "Counterspell should answer a specific high-impact parryable threat, not generic burst.",
-  "Spirit/Bullet Resilience are conditional on the damage profile actually hurting the player.",
-  "Unstoppable becomes high value for channels/commits that the enemy roster can reliably interrupt.",
-  "High-rank purchase data is supporting evidence, never a substitute for mechanical validity, buyer role, or team coverage."
+ "Return ONE full-game counter plan for all six opponents, not different item plans by game phase.",
+ "Prefer counters with three or more specific meaningful enemy interactions when possible.",
+ "Use confirmed ability and item mechanics, role fit, probable enemy builds, and current high-rank purchases.",
+ "Stage and lane state are legacy context and must NOT gate, eliminate or determine counter priority.",
+ "Plated Armor can prevent Haze Fixation, Infernus Afterburn and Mina Love Bites on eligible bullet hits; chance-based not guaranteed.",
+ "Do not claim Plated blocks Mirage Djinn's Mark, Paradox Kinetic Carbine, Silver Slam Fire bonus damage or other unverified interactions.",
+ "Role fit: a gun carry might prefer Metal Skin over Disarming Hex; a utility hero can prefer team-facing gun denial.",
+ "Prefer one counter solving several enemies over several narrow purchases; penalize overlapping counters with low additional utility.",
+ "Do not force an expensive item into an early purchase, but allow it to be the highest priority objective for the whole match.",
+ "Require actual triggers for Reactive Barrier, meaningful status time saved by Debuff Reducer, reliable proc application for antiheal, and vulnerable channels for Knockdown.",
+ "Do not over-counter: preserve the player's damage and utility core. Two counters that together cover most of the enemy roster often beat four narrow counters.",
+ "Expert role/team framework is derived from AShires video; exact per-item video citations have not been transcribed. Analytics are observational only.",
+ "Report best team counter, second priority, conditional alternative, and a practical full-game path."
 ].join("\n");
 
 function createServer(){
   const server = new McpServer({
     name:"Deadlock Counter-Buy",
-    version:"1.0.0",
+    version:"3.0.0",
   });
 
   registerAppResource(
@@ -488,6 +556,7 @@ function createServer(){
       }
       const candidateItems=items.filter(i=>candidateNames.has(itemName(i))).slice(0,40);
       const coverage=counterCoverage(candidateItems,resolvedRole,enemyHeroes,enemyBuildSignals,enemyMechanics,lane);
+      const fullPlan=fullGamePlan(coverage,core);
 
       const result={
         source:"Deadlock API current assets + analytics",
@@ -516,6 +585,8 @@ function createServer(){
         popular_core:core,
         candidate_items:candidateItems.map(itemSnapshot),
         counter_coverage:coverage,
+        full_game_plan:fullPlan,
+        engine_version:"3.0.0-team-first",
         high_rank_item_evidence:evidenceFor(candidateItems,baseRows,laneRows,rosterRows),
         evidence_window:"Deadlock API analytics default window (currently 30 days unless the API changes its default).",
         high_rank_filter:"min_average_badge=81, maximum supported badge=116",
@@ -533,15 +604,13 @@ Use the structured evidence returned with this tool call. Do not simply pick the
 Decision standard:
 ${METHOD}
 
-Output for the user should be extremely glanceable:
-[Player] vs [Lane 1] + [Lane 2]
-Buy now: ITEM — one-line why.
-Team counter: ITEM — one-line why it covers multiple meaningful enemies and fits the buyer's role.
-Pivot: ITEM — one-line condition for changing the purchase.
-Later: ITEM — one-line why.
-Simple path: ITEM → Core → ITEM → ITEM.
-If no counter is worth delaying core, explicitly say Stay on core.
-Do not force four different purchases; repeating Stay on core or holding a slot is better than over-countering.`
+Output for the user, extremely glanceable:
+[Player] versus [six enemy heroes]
+Best team counter: ITEM — concrete interactions and number of enemies covered.
+Second priority: ITEM or Stay on core — distinct additional coverage.
+Optional pivot: ITEM — conditional fallback if threat changes.
+Full-game path: Core → Counter → Core → Counter.
+No per-stage advice; one plan from one prompt. No mandatory extra items.`
         }],
         structuredContent:result,
       };
