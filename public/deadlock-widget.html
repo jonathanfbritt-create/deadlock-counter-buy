@@ -28,7 +28,7 @@ select{width:100%;background:#101417;color:var(--text);border:1px solid var(--li
 <body>
 <div class="app">
 <header>
-  <div><h1>Deadlock Counter-Buy</h1><p>Build the matchup, choose how you're playing, then GO. ChatGPT will check lane pressure, your role and the full enemy team.</p></div>
+  <div><h1>Deadlock Counter-Buy · V3</h1><p>One matchup. One plan for the whole game. Counters are ranked by meaningful coverage across all six enemies and how you play.</p></div>
   <div class="patch" id="patch">Live data</div>
 </header>
 <div class="body">
@@ -36,11 +36,9 @@ select{width:100%;background:#101417;color:var(--text);border:1px solid var(--li
     <div class="label">Build the matchup</div>
     <div class="slots" id="slots"></div>
     <div class="controls">
-      <div><label for="laneState">Lane state</label><select id="laneState"><option value="behind">Behind</option><option value="even" selected>Even</option><option value="ahead">Ahead</option></select></div>
-      <div><label for="stage">Game stage</label><select id="stage"><option value="lane" selected>Lane</option><option value="mid">Mid</option><option value="late">Late</option></select></div>
-      <div><label for="role">Your role</label><select id="role"><option value="auto" selected>Auto</option><option value="m1">M1 / Gun</option><option value="spirit">Spirit / Ability</option><option value="utility">Support / Utility</option><option value="frontline">Frontline / Initiator</option><option value="hybrid">Hybrid</option></select></div>
+      <div><label for="role">Your role / Build</label><select id="role"><option value="auto" selected>Auto</option><option value="m1">M1 / Gun</option><option value="spirit">Spirit / Ability</option><option value="utility">Support / Utility</option><option value="frontline">Frontline / Initiator</option><option value="hybrid">Hybrid</option></select></div>
     </div>
-    <button class="go" id="go" disabled>GO — ASK CHATGPT</button>
+    <button class="go" id="go" disabled>BUILD MY FULL-GAME PLAN</button>
     <button class="clear" id="clear">Clear enemies</button>
     <div class="status" id="status"></div>
   </section>
@@ -49,7 +47,7 @@ select{width:100%;background:#101417;color:var(--text);border:1px solid var(--li
     <div class="grid" id="grid"></div>
   </section>
 </div>
-<div class="foot">The plugin does not call a paid AI API. GO sends your matchup back into this ChatGPT conversation; ChatGPT then uses the plugin's live Deadlock data tool before answering.</div>
+<div class="foot">One analysis covers all six opponents, including verified on-hit interactions like Haze Fixation, Infernus Afterburn and Mina Love Bites. No extra AI API billing. The plan preserves your hero's core items.</div>
 </div>
 <script type="module">
 const state={heroes:[],you:"",enemies:["","","","","",""],active:"you"};
@@ -126,7 +124,7 @@ window.addEventListener("message",event=>{
 async function init(){
   if(window.openai?.toolOutput)updateFromTool({structuredContent:window.openai.toolOutput});
   try{
-    await rpcRequest("ui/initialize",{appInfo:{name:"deadlock-counter-buy-picker",version:"1.0.0"},appCapabilities:{},protocolVersion:"2026-01-26"});
+    await rpcRequest("ui/initialize",{appInfo:{name:"deadlock-counter-buy-picker",version:"3.0.0"},appCapabilities:{},protocolVersion:"2026-01-26"});
     rpcNotify("ui/notifications/initialized",{});
   }catch(e){console.error(e)}
 }
@@ -137,20 +135,20 @@ $("#go").onclick=async()=>{
   if($("#go").disabled)return;
   $("#go").disabled=true;$("#status").textContent="Sending matchup to ChatGPT…";
   const prompt=[
-    "Use the Deadlock Counter-Buy plugin's get_counter_buy_context tool now. Do not answer from memory.",
+    "Use the connected Deadlock Counter-Buy get_counter_buy_context tool for this exact matchup NOW, not remembered stats.",
     `Player hero: ${state.you}`,
     `Lane opponents: ${state.enemies[0]} + ${state.enemies[1]}`,
     `Other enemies: ${state.enemies.slice(2).join(", ")}`,
-    `Lane state: ${$("#laneState").value}`,
-    `Game stage: ${$("#stage").value}`,
-    `Player role: ${$("#role").value} (Auto means infer from the hero's current common build and kit.)`,
+    `Player role: ${$("#role").value}. Auto means infer from current build and kit.`,
+    "Use player_role when supported by tool; ignore legacy stage/lane-state rankings.",
     "",
-    "After the tool returns, decide the best counter-buy using current item mechanics, current common builds, this hero's core needs, lane matchup, player role, full enemy roster, and recent high-rank purchase evidence.",
-    "Use these three tests: does it counter the specific problem; can my hero use it well; is it worth delaying core right now?",
-    "Apply the expert framework: choose the counter that lets my role keep doing its job. For example, an M1 hero may prefer Metal Skin over Disarming Hex into another M1 threat, while a utility hero may prefer Disarming Hex because it protects the whole team.",
-    "Explicitly scan all six enemies for repeated threat patterns. Prefer one item with meaningful coverage across several enemies over several narrow 1:1 counters.",
-    "Use the tool's counter_coverage, enemy_build_signals, mechanic summaries and new-hero priors as evidence, but re-check the live mechanics before committing.",
-    "Keep the answer extremely glanceable: Buy now, Team counter, Pivot, Later, Simple path. One short reason each. If no counter is worth delaying core, say Stay on core."
+    "Give one plan for the entire game. PRIORITIZE the item that meaningfully counters the largest number of the six enemies. Do NOT rank by stage, lane, or ahead/behind status.",
+    "Use live abilities and current builds, explicit verified on-hit rules, buyer-role fit, and additive coverage across all six heroes. Avoid duplicated defenses whose protection overlaps.",
+    "Specifically check Plated Armor interactions with bullet-applied abilities: Haze Fixation, Infernus Afterburn, Mina Love Bites, and others where mechanics confirm.",
+    "Do not buy a counter only because it is affordable first; a 6400 soul item may be the best full-game objective. Preserve essential core spikes.",
+    "Use AShires role/team framework, but do not claim the video directly endorsed individual recommendations without transcript proof.",
+    "Return in five glanceable lines: Best team counter (number and names of heroes covered), Second priority (distinct coverage), Optional pivot (condition), Full-game path (core and recommended counters), and one sentence on why this solves the most of the enemy team.",
+    "If the tool provides full_game_plan and counter_coverage use them, and verify each named counter interaction before suggesting."
   ].join("\n");
   try{
     await bridgeReady;
