@@ -101,7 +101,7 @@
   <div class="top">
     <div class="brand">
       <h1>Deadlock Counter-Buy</h1>
-      <p>Pick your hero, how you're playing, the lane duo and the other four enemies. Get a role-aware lane buy, team counter, pivot and late-game answer.</p>
+      <p>Pick once. Get a counter-buy plan for the full six-enemy team, not a separate shopping list for each stage.</p>
     </div>
     <div class="status">
       <span class="pill" id="patchPill">Patch data: loading…</span>
@@ -115,37 +115,17 @@
       <div class="section-label">1 · Build the matchup</div>
       <div class="slots" id="slots"></div>
 
-      <div class="controls">
-        <div class="seg-wrap">
-          <label>Lane state</label>
-          <div class="seg" id="laneStateSeg">
-            <button type="button" data-val="behind">Behind</button>
-            <button type="button" class="on" data-val="even">Even</button>
-            <button type="button" data-val="ahead">Ahead</button>
-          </div>
-        </div>
-        <div class="select-wrap">
-          <label for="stageSelect">Game stage</label>
-          <select id="stageSelect">
-            <option value="lane">Lane</option>
-            <option value="mid">Mid</option>
-            <option value="late">Late</option>
-          </select>
-        </div>
-        <div class="select-wrap">
-          <label for="roleSelect">Your role</label>
+      <div class="controls" style="grid-template-columns:1fr">
+        <div class="select-wrap"><label for="roleSelect">Your role / Build</label>
           <select id="roleSelect">
-            <option value="auto">Auto</option>
-            <option value="m1">M1 / Gun</option>
-            <option value="spirit">Spirit / Ability</option>
-            <option value="utility">Support / Utility</option>
-            <option value="frontline">Frontline / Initiator</option>
-            <option value="hybrid">Hybrid</option>
+            <option value="auto">Auto · infer build</option><option value="m1">M1 / Gun</option>
+            <option value="spirit">Spirit / Ability</option><option value="utility">Support / Utility</option>
+            <option value="frontline">Frontline / Initiator</option><option value="hybrid">Hybrid</option>
           </select>
         </div>
       </div>
 
-      <button class="go" id="goBtn" type="button">GO — GIVE ME THE BUY</button>
+      <button class="go" id="goBtn" type="button">BUILD MY FULL-GAME PLAN</button>
       <button class="clear" id="clearBtn" type="button">Clear enemies</button>
       <div class="hint">Fast mode: after you choose a hero, the active slot automatically jumps to the next empty one.</div>
     </aside>
@@ -175,13 +155,13 @@
           </div>
 
           <div class="calls">
-            <div class="call"><div class="k">Buy now</div><div class="v" id="buyNow"></div></div>
-            <div class="call"><div class="k">Team counter</div><div class="v" id="ifAhead"></div></div>
-            <div class="call"><div class="k">Pivot</div><div class="v" id="nextDefense"></div></div>
-            <div class="call"><div class="k">Later</div><div class="v" id="later"></div></div>
+            <div class="call"><div class="k">Best team counter</div><div class="v" id="buyNow"></div></div>
+            <div class="call"><div class="k">Second priority</div><div class="v" id="ifAhead"></div></div>
+            <div class="call"><div class="k">Optional pivot</div><div class="v" id="nextDefense"></div></div>
+            <div class="call"><div class="k">Protect your core</div><div class="v" id="later"></div></div>
           </div>
 
-          <div class="path"><strong>Simple path</strong><div class="path-text" id="pathText"></div></div>
+          <div class="path"><strong>Full-game path</strong><div class="path-text" id="pathText"></div></div>
           <div class="data-note"><span class="dot" id="dataDot"></span><span id="dataNote"></span></div>
           <button class="detail-toggle" id="detailToggle" type="button">Why these picks?</button>
           <div class="detail" id="detail"></div>
@@ -358,7 +338,7 @@
     };
     return high[role]?.has(name) ? 1.4 : (medium[role]?.has(name) ? 0.7 : 0);
   }
-  function stageWeights(){return state.stage==='lane'?{lane:.68,team:.32,maxTier:2}:state.stage==='mid'?{lane:.32,team:.68,maxTier:3}:{lane:.18,team:.82,maxTier:4};}
+  function stageWeights(){return {lane:0,team:1,maxTier:4};} // Full-game ranking, no phase-based item exclusion.
   function scoreItem(name,lane,team){
     const fit=fitFor(state.you), w=stageWeights(); const Tm=k=>(lane[k]||0)*w.lane+(team[k]||0)*w.team; let s=0,why=[];
     switch(name){
@@ -385,7 +365,7 @@
       case 'Toxic Bullets': s=Tm('heal')*.72+Tm('gun')*.18; if(inferredRole()==='m1')s+=1.25; else s-=.5; if(state.stage==='lane')s-=1.5; why=['M1-friendly anti-heal that preserves your normal damage plan']; break;
       case 'Unstoppable': s=Tm('hard')*.43+Tm('silence')*.58+Tm('displace')*.72+fit.channel*.95; if(state.stage==='lane')s-=3.2; else if(state.stage==='mid')s-=.7; why=[fit.channel>=2?'protects the ability/channel your hero must complete':'protects your commit from the enemy CC chain']; break;
       case 'Cheat Death': s=Tm('burst')*.55+Tm('dive')*.38; if(state.stage!=='late')s-=2.4; why=['late emergency answer when you are being erased before you can play']; break;
-      case 'Plated Armor': s=Tm('gun')*.92; if(state.stage!=='late')s-=2.5; why=['late passive answer to repeated bullet pressure and on-hit effects']; break;
+      case 'Plated Armor': {const names=new Set(state.enemies);const verified=['Baba','Billy','Celeste','Graves','Haze','Holliday','Infernus','Mina','Seven','Venator','Victor','Vindicta','Vyper','Wraith'].filter(h=>names.has(h));s=Tm('gun')*.3+verified.length*3.6+(verified.length>=3?3.5:0);why=['chance-based prevention of bullet on-hit effects: '+verified.join(', ')];break;}
     }
     s+=roleBonus(name);
     if(ITEMS[name].tier>w.maxTier) s-=3.5*(ITEMS[name].tier-w.maxTier);
@@ -450,7 +430,7 @@
   function renderResult(r, pendingLive=false){
     $('#emptyState').hidden=true; $('#resultBody').hidden=false;
     $('#matchupTitle').textContent=`${state.you} vs ${state.enemies[0]} + ${state.enemies[1]}`;
-    $('#matchupSub').textContent=`${state.stage==='lane'?'Lane phase':state.stage==='mid'?'Mid game':'Late game'} · ${state.laneState} lane · ${inferredRole()} role · full roster checked`;
+    $('#matchupSub').textContent=`Full-game team plan · ${inferredRole()} role · six enemies`;
     $('#confidence').textContent=`${r.confidence} confidence`;
     $('#buyNow').innerHTML=callHTML(r.buy); $('#ifAhead').innerHTML=callHTML(r.ahead); $('#nextDefense').innerHTML=callHTML(r.defense); $('#later').innerHTML=callHTML(r.later);
     const core=coreNameForStage();
@@ -472,7 +452,7 @@
     $('#dataNote').textContent = r.aiNote || (pendingLive ? 'Instant local call shown. Checking recent Oracle–Eternus purchases before AI verification…' : r.liveSignal ? r.liveSignal : 'Using curated matchup mechanics. Live high-rank item data was unavailable, so it did not influence the call.');
     const top=r.scored.slice(0,6).map(x=>`<div class="mini"><b>${esc(x.name)}</b>Matchup score ${x.score.toFixed(1)}</div>`).join('');
     const aiLine=r.aiReason?`<div style="margin-top:8px"><b style="color:var(--soft)">AI read:</b> ${esc(r.aiReason)}</div>`:'';
-    $('#detail').innerHTML=`<div class="detail-grid">${top}</div><div style="margin-top:8px">V2 weights lane urgency, your ${inferredRole()} role, and full-team overlap separately. Team counter favors one purchase that matters against several enemies. Expensive items are penalized before their timing. High-rank purchase behavior is evidence, not a command.</div>${aiLine}`;
+    $('#detail').innerHTML=`<div class="detail-grid">${top}</div><div style="margin-top:8px">V3 ranks the full six-hero team, prizes specific verified on-hit interactions, and penalizes redundant counters. Item tiers do not exclude options. High-rank purchase rates are supporting evidence, not causality.</div>${aiLine}`;
   }
 
   function aiResultToEngine(ai, base){
@@ -586,8 +566,8 @@
   }
 
   $('#search').addEventListener('input',renderPicker);
-  $('#laneStateSeg').addEventListener('click',e=>{const b=e.target.closest('button[data-val]'); if(!b)return; state.laneState=b.dataset.val; [...$('#laneStateSeg').querySelectorAll('button')].forEach(x=>x.classList.toggle('on',x===b)); savePrefs();});
-  $('#stageSelect').addEventListener('change',e=>{state.stage=e.target.value; savePrefs();});
+  // Lane state no longer drives the full-game plan.
+  // Game-stage selection removed to avoid biasing coverage.
   $('#roleSelect').addEventListener('change',e=>{state.role=e.target.value; savePrefs();});
   $('#clearBtn').addEventListener('click',()=>{state.enemies=['','','','','','']; state.active=state.you?'e0':'you'; $('#resultBody').hidden=true; $('#emptyState').hidden=false; renderSlots(); renderPickerLabel();});
   $('#goBtn').addEventListener('click',async()=>{
@@ -611,7 +591,7 @@
   });
   $('#detailToggle').addEventListener('click',()=>{const d=$('#detail'); d.classList.toggle('show'); $('#detailToggle').textContent=d.classList.contains('show')?'Hide scoring':'Why these picks?';});
 
-  loadPrefs(); $('#stageSelect').value=state.stage; $('#roleSelect').value=state.role; [...$('#laneStateSeg').querySelectorAll('button')].forEach(x=>x.classList.toggle('on',x.dataset.val===state.laneState)); state.active=state.you?'e0':'you'; renderSlots(); renderPickerLabel(); loadLiveData();
+  loadPrefs(); $('#roleSelect').value=state.role; state.active=state.you?'e0':'you'; renderSlots(); renderPickerLabel(); loadLiveData();
 })();
 </script>
 </body>
