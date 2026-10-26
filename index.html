@@ -374,26 +374,81 @@
     return {name,score:s,why:why[0]};
   }
 
+
+  const TEAM_ITEM_FAMILIES={
+    'Metal Skin':'bullet','Bullet Resilience':'bullet','Plated Armor':'onhit',
+    'Disarming Hex':'gun-denial','Rusted Barrel':'gun-denial','Suppressor':'gun-denial',
+    'Healbane':'antiheal','Toxic Bullets':'antiheal','Decay':'antiheal',
+    'Reactive Barrier':'status','Debuff Reducer':'status','Dispel Magic':'status','Unstoppable':'status',
+    'Knockdown':'interrupt'
+  };
+  const VERIFIED_PLATED={
+    'Baba':'Threadsap','Billy':'Blasted','Celeste':'Light Eater','Graves':'Essence Theft',
+    'Haze':'Fixation','Holliday':'Crackshot','Infernus':'Afterburn','Mina':'Love Bites',
+    'Seven':'Power Surge','Venator':'Ira Domini','Victor':'Shocking Reanimation',
+    'Vindicta':'Flight','Vyper':'Lethal Venom','Wraith':'Card Trick / Full Auto'
+  };
+  function coverageInto(item,enemy){
+    const p=profileFor(enemy),role=inferredRole();
+    if(item==='Plated Armor'){
+      if(VERIFIED_PLATED[enemy])return {enemy,value:3.6,ability:VERIFIED_PLATED[enemy]};
+      return p.gun>=2&&!['Mirage','Paradox','Silver','Sinclair','Grey Talon'].includes(enemy)?
+        {enemy,value:.8,ability:'weapon fire'}:null;
+    }
+    if(['Metal Skin','Bullet Resilience','Disarming Hex','Rusted Barrel','Suppressor'].includes(item)&&p.gun>=2)
+      return {enemy,value:(item==='Metal Skin'&&role==='m1')?2.6:(item==='Disarming Hex'&&role==='utility')?2.55:1.85,ability:'gun pressure'};
+    if(item==='Spirit Resilience'&&p.spirit>=2)return {enemy,value:1.9,ability:'spirit damage'};
+    if(['Healbane','Toxic Bullets','Decay'].includes(item)&&p.heal>=2){
+      const fit=(role==='m1'&&item==='Toxic Bullets')||(role==='spirit'&&item==='Healbane')||(role==='utility'&&item==='Decay');
+      return {enemy,value:fit?2.6:1.65,ability:'healing'};
+    }
+    if(item==='Reactive Barrier'&&p.hard>=2)return {enemy,value:1.9,ability:'qualifying control (verify trigger)'};
+    if(item==='Debuff Reducer'&&(p.slow>=2||p.silence>=2))return {enemy,value:1.8,ability:'long debuff'};
+    if(item==='Enduring Speed'&&p.slow>=2)return {enemy,value:1.65,ability:'slows'};
+    if(item==='Knockdown'&&(p.air>=2||p.channel>=2))return {enemy,value:2.6,ability:p.air>=2?'airborne':'channel'};
+    if(item==='Slowing Hex'&&p.mob>=3)return {enemy,value:1.1,ability:'mobility: conditional'};
+    if(item==='Unstoppable'&&(p.hard>=2||p.silence>=2))return {enemy,value:1.65,ability:'control'};
+    return null;
+  }
   function curatedRecommendation(){
-    const laneNames=state.enemies.slice(0,2), all=state.enemies.slice(); const lane=sumThreat(laneNames), team=sumThreat(all), fit=fitFor(state.you);
-    let scored=Object.keys(ITEMS).map(n=>scoreItem(n,lane,team)).sort((a,b)=>b.score-a.score);
-    const teamScored=Object.keys(ITEMS).map(n=>scoreItem(n,team,team)).sort((a,b)=>b.score-a.score);
-    const stage=stageWeights();
-    const immediate=scored.filter(x=>ITEMS[x.name].tier<=stage.maxTier);
-    let buy=immediate[0];
-    const lanePressure=(lane.hard+lane.slow+lane.heal+lane.poke+lane.dive+lane.burst)/6;
-    if(state.stage==='lane' && buy.score<4.15 && lanePressure<3.25) buy={name:'Stay on core',score:buy.score,why:'no counter is valuable enough to delay your next core spike'};
-
-    let ahead=teamScored.find(x=>x.name!==buy.name&&x.score>=4.15)||{name:'Stay on core',score:0,why:'no single team counter has enough coverage to justify a slot yet'};
-    let defense=scored.find(x=>x.name!==buy.name&&x.name!==ahead.name&&x.score>=4.4);
-    if(!defense) defense={name:'Only if needed',score:0,why:'pivot only when a different enemy threat actually becomes the problem'};
-
-    let later=scored.filter(x=>ITEMS[x.name].tier>=3&&x.name!==defense?.name&&x.name!==ahead?.name&&x.name!==buy.name).sort((a,b)=>b.score-a.score)[0];
-    if(fit.channel>=2 && (team.hard+team.silence+team.displace)>=10) later={name:'Unstoppable',score:10,why:'protects the key channel/engage your hero is picked to land'};
-    if(later && later.score<4.9) later={name:'Return to core scaling',score:later.score,why:'the roster does not justify another expensive counter slot'};
-
-    const confidence=(buy.score>=7.2?'High':buy.score>=5.0?'Good':'Situational');
-    return {buy,ahead,defense,later,scored,lane,team,confidence,liveSignal:null,role:inferredRole()};
+    const all=state.enemies.slice(),lane=sumThreat(all.slice(0,2)),team=sumThreat(all);
+    const scored=Object.keys(ITEMS).map(name=>{
+      const matches=all.map(enemy=>coverageInto(name,enemy)).filter(Boolean);
+      const strong=matches.filter(x=>x.value>=1.6),c=strong.length;
+      const verified=name==='Plated Armor'?strong.filter(x=>VERIFIED_PLATED[x.enemy]).length:0;
+      const score=strong.reduce((z,x)=>z+x.value,0)+(c>=4?5:c>=3?3.5:c>=2?1:0)+
+        verified*1.5+roleBonus(name)-Math.max(0,ITEMS[name].cost-1600)/1600*.28;
+      return {
+        name,score,coverage:c,matches,strong,family:TEAM_ITEM_FAMILIES[name]||name,
+        why:strong.slice(0,4).map(x=>x.enemy+' ('+x.ability+')').join(', ')||'Situational'
+      };
+    }).filter(x=>x.coverage>0).sort((a,b)=>b.score-a.score);
+    const picks=[],already=new Map(),unused=scored.slice();
+    for(let i=0;i<3;i++){
+      let best=null,bestValue=-Infinity;
+      for(const x of unused){
+        const novel=x.strong.reduce((z,t)=>z+Math.max(0,t.value-(already.get(t.enemy)||0)),0);
+        const val=novel+(x.coverage>=3?2.2:0)+(roleBonus(x.name)>1?1:0)-
+         (picks.some(y=>y.family===x.family)?2.5:0)-Math.max(0,ITEMS[x.name].cost-3200)/3200*.35;
+        if(val>bestValue){best=x;bestValue=val;}
+      }
+      if(!best||bestValue<2.8)break;
+      picks.push(best);
+      for(const x of best.strong)already.set(x.enemy,Math.max(already.get(x.enemy)||0,x.value));
+      unused.splice(unused.indexOf(best),1);
+    }
+    const pack=x=>x?{name:x.name,score:x.score,why:x.coverage+'/6 enemies: '+x.why}:
+      {name:'Stay on core',score:0,why:'Other counters do not add enough value'};
+    const pivot=unused.find(x=>x.coverage>=2);
+    const core=coreNameForStage();
+    return {
+      buy:pack(picks[0]),ahead:pack(picks[1]),
+      defense:pivot?{name:pivot.name,score:pivot.score,why:'Only if needed: '+pivot.why}:{name:'Hold slot',score:0,why:'No useful nonredundant pivot'},
+      later:{name:'Protect core scaling',score:0,why:'These counters are alternatives, not a required shopping list'},
+      scored,lane,team,confidence:'Team-first',
+      pathOverride:[core,...(picks[0]?[picks[0].name]:[]),'Next core spike',...(picks[1]?[picks[1].name]:[])],
+      liveSignal:null
+    };
   }
 
   function itemMeta(name){
@@ -420,7 +475,7 @@
   }
 
   function coreNameForStage(){
-    const h=meta.heroByName.get(state.you); const group=state.stage==='lane'?'early_game':state.stage==='mid'?'mid_game':'late_game'; const arr=h?.popular_items?.[group]||[];
+    const h=meta.heroByName.get(state.you); const group='early_game'; const arr=h?.popular_items?.[group]||[];
     if(!arr.length) return 'Core';
     const counterNames=new Set(Object.keys(ITEMS));
     const best=arr.slice().sort((a,b)=>(b.pick_pct||0)-(a.pick_pct||0)).find(x=>{const nm=meta.itemById.get(x.item_id)?.name || x.class_name; return nm && !counterNames.has(nm);});
@@ -450,7 +505,7 @@
     }
     $('#dataDot').className='dot'+(r.liveSignal?' live':'');
     $('#dataNote').textContent = r.aiNote || (pendingLive ? 'Instant local call shown. Checking recent Oracle–Eternus purchases before AI verification…' : r.liveSignal ? r.liveSignal : 'Using curated matchup mechanics. Live high-rank item data was unavailable, so it did not influence the call.');
-    const top=r.scored.slice(0,6).map(x=>`<div class="mini"><b>${esc(x.name)}</b>Matchup score ${x.score.toFixed(1)}</div>`).join('');
+    const top=r.scored.slice(0,6).map(x=>`<div class="mini"><b>${esc(x.name)}</b>Team coverage: ${x.coverage}/6 · score ${x.score.toFixed(1)}</div>`).join('');
     const aiLine=r.aiReason?`<div style="margin-top:8px"><b style="color:var(--soft)">AI read:</b> ${esc(r.aiReason)}</div>`:'';
     $('#detail').innerHTML=`<div class="detail-grid">${top}</div><div style="margin-top:8px">V3 ranks the full six-hero team, prizes specific verified on-hit interactions, and penalizes redundant counters. Item tiers do not exclude options. High-rank purchase rates are supporting evidence, not causality.</div>${aiLine}`;
   }
@@ -517,15 +572,9 @@
     const [baseRows,laneRows,teamRows]=await Promise.all(urls.map(u=>fetchJSON(u,7000)));
     if(!baseRows||!laneRows||!teamRows) return r;
     const B=statIndex(baseRows),L=statIndex(laneRows),T=statIndex(teamRows); const maxB=Math.max(1,...baseRows.map(x=>x.matches||0)),maxL=Math.max(1,...laneRows.map(x=>x.matches||0)),maxT=Math.max(1,...teamRows.map(x=>x.matches||0));
-    let touched=[];
-    for(const x of r.scored){ const im=meta.items.get(x.name); if(!im?.id) continue; const b=normalizedPresence(B.get(im.id),maxB), l=normalizedPresence(L.get(im.id),maxL), t=normalizedPresence(T.get(im.id),maxT); const uplift=(l-b)*2.2+(t-b)*.7; const sample=Math.min(1,((L.get(im.id)?.matches||0)/80)); x.liveAdj=uplift*sample; x.score+=x.liveAdj; if(Math.abs(x.liveAdj)>.12) touched.push({x,lrow:L.get(im.id),adj:x.liveAdj}); }
-    // Rebuild only close decisions; hard matchup rules remain dominant.
-    r.scored.sort((a,b)=>b.score-a.score); const maxTier=stageWeights().maxTier;
-    const contenders=r.scored.filter(x=>(ITEMS[x.name]?.tier||9)<=maxTier);
-    if(r.buy.name!=='Stay on core' && contenders[0] && contenders[0].score > r.buy.score+.45) r.buy=contenders[0];
-    const laneStat=meta.items.get(r.buy.name)?.id ? L.get(meta.items.get(r.buy.name).id) : null;
-    const time=laneStat?.avg_buy_time_s ? Math.round(laneStat.avg_buy_time_s/60) : null;
-    r.liveSignal=`Live high-rank check applied: Oracle–Eternus, trailing 30 days${time?`; ${r.buy.name} averages about ${time} min in this lane-filtered sample`:''}.`;
+    // High-rank analytics provide supporting context only: they must not rerank
+    // a verified six-hero counter or apply a phase-based tier gate.
+    r.liveSignal='Live high-rank samples checked; mechanical teamwide coverage retains priority.';
     r.liveEvidence=r.scored.slice(0,14).map(x=>{
       const im=meta.items.get(x.name); if(!im?.id)return {name:x.name};
       const b=B.get(im.id)||{}, l=L.get(im.id)||{}, t=T.get(im.id)||{};
@@ -540,7 +589,7 @@
         roster_win_rate:t.matches&&typeof t.wins==='number'?+(t.wins/t.matches).toFixed(3):null
       };
     });
-    if(touched.length) r.confidence = r.confidence==='Situational'?'Good':r.confidence;
+    // Observational samples do not determine confidence.
     return r;
   }
 
